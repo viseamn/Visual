@@ -1,18 +1,7 @@
-local function import(name)
-    if typeof(script) == "Instance" and script.Parent then
-        local module = script.Parent:FindFirstChild(name)
-        if module and module:IsA("ModuleScript") then return require(module) end
-    end
-    assert(
-        type(readfile) == "function" and type(loadstring) == "function",
-        "Place the Viz modules beside this script, or copy Viz into the executor workspace"
-    )
-    return loadstring(readfile("Viz/" .. name .. ".lua"), name)()
-end
-
-local Library = import("Library")
-local SaveManager = import("SaveManager")
-local ThemeManager = import("ThemeManager")
+local repo = "https://raw.githubusercontent.com/viseamn/Visual/main/"
+local Library = loadstring(game:HttpGet(repo .. "Library.lua"))()
+local SaveManager = loadstring(game:HttpGet(repo .. "SaveManager.lua"))()
+local ThemeManager = loadstring(game:HttpGet(repo .. "ThemeManager.lua"))()
 
 local Window = Library:CreateWindow({
     Title = "Viz",

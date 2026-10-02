@@ -1,7 +1,7 @@
 local HttpService = game:GetService("HttpService")
 
 local function newManager()
-    local ThemeManager = { Version = "1.0.1", Folder = "Viz", Current = "Default" }
+    local ThemeManager = { Version = "1.0.2", Folder = "Viz", Current = "Default" }
     local window, context
     local Theme, defaultTheme
     local function bound()
@@ -118,6 +118,7 @@ local function newManager()
         local colors = group:AddTab("Colors")
         local style = group:AddTab("Style")
         self.StyleSection = style
+        window:AddStyleControls(style)
         local saved = group:AddTab("Presets")
         local function names()
             local result = { "Default", "Light", "Black", "Mint", "Nord", "Dracula" }

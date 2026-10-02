@@ -1,7 +1,7 @@
 local HttpService = game:GetService("HttpService")
 
 local function newManager()
-    local SaveManager = { Version = "1.0.1", Folder = "Viz", Ignore = {} }
+    local SaveManager = { Version = "1.0.2", Folder = "Viz", Ignore = {} }
     local window, context
     local controlRegistry, ThemeManager
     local function bound()

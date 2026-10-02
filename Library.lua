@@ -1,5 +1,5 @@
 -- Viz 1.0.0
-local Library = { Version = "1.0.1" }
+local Library = { Version = "1.0.2" }
 local function safeName(name)
     return type(name) == "string" and #name > 0 and #name <= 64 and name:match("^[%w _%-]+$") and name:match("%S")
 end
@@ -355,16 +355,14 @@ function Library:CreateWindow(config)
         return image
     end
 
-    local logo = Instance.new("TextLabel")
+    local logo = Instance.new("ImageLabel")
     logo.Name = "Logo"
     logo.BackgroundTransparency = 1
     logo.AnchorPoint = Vector2.new(0.5, 0.5)
     logo.Position = UDim2.new(0, 30, 0.5, 0)
     logo.Size = UDim2.fromOffset(32, 32)
-    logo.Text = "V"
-    logo.TextSize = 25
-    setUIFont(logo, true)
-    bindTheme(logo, "TextColor3", "Accent")
+    logo.Image = "rbxassetid://95943456246483"
+    logo.ScaleType = Enum.ScaleType.Fit
     logo.Parent = header
 
     local navigationGroup = Instance.new("ScrollingFrame")
@@ -395,7 +393,18 @@ function Library:CreateWindow(config)
         end
         navigationPadding.PaddingTop = UDim.new(0, 12)
         navigationPadding.PaddingBottom = UDim.new(0, 12)
+        navigationLayout.VerticalAlignment = navigationLayout.AbsoluteContentSize.Y
+                    > navigationGroup.AbsoluteSize.Y - 24
+                and Enum.VerticalAlignment.Top
+            or Enum.VerticalAlignment.Center
     end
+    local navigationSizeConnection = navigationGroup:GetPropertyChangedSignal("AbsoluteSize"):Connect(centerNavigation)
+    local navigationContentConnection =
+        navigationLayout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(centerNavigation)
+    screen.Destroying:Connect(function()
+        navigationSizeConnection:Disconnect()
+        navigationContentConnection:Disconnect()
+    end)
 
     local navigation, tabs = {}, {}
     local activeTab
@@ -4216,8 +4225,7 @@ function Library:CreateWindow(config)
     title.Position = UDim2.fromOffset(54, 0)
     title.Size = UDim2.new(0, 118, 1, 0)
     title.TextTruncate = Enum.TextTruncate.AtEnd
-    globalSearch.Position = UDim2.fromOffset(184, 11)
-    globalSearch.Size = UDim2.new(1, -208, 0, 32)
+    title.Visible = false
 
     local window = {
         Version = Library.Version,
@@ -4289,29 +4297,32 @@ function Library:CreateWindow(config)
         settingsTab = addTab({ Name = name or "Settings", Icon = "settings" })
         local group = settingsTab:AddLeftGroupbox("Interface", "settings")
         keybindListControl = group:AddCheckbox({
-            Name = "Keybind list",
+            Name = "Keybind Menu",
             Default = keybindMenu.Frame.Visible,
             NoSave = true,
             Callback = applyKeybindList,
         })
         local previous = menuKeybind
-        menuKeybind = group:AddKeybind({ Name = "Menu key", Default = previous.Keybind, NoSave = true })
+        menuKeybind = group:AddKeybind({ Name = "Menu keybind", Default = previous.Keybind, NoSave = true })
         menuKeybind:SetModifiers(previous.Modifiers)
         self.MenuKeybind = menuKeybind
-        styleControl = group:AddDropdown({
-            Name = "Layout",
+        return settingsTab
+    end
+    function window:AddStyleControls(section)
+        if styleControl then return end
+        styleControl = section:AddDropdown({
+            Name = "UI style",
             Values = { "Normal", "Top bar", "Bottom bar" },
             Default = layoutStyle,
             NoSave = true,
             Callback = applyStyle,
         })
-        autoHideControl = group:AddCheckbox({
-            Name = "Auto-hide navigation",
+        autoHideControl = section:AddCheckbox({
+            Name = "Auto-hide bar",
             Default = dockAutoHide,
             NoSave = true,
             Callback = applyAutoHide,
         })
-        return settingsTab
     end
     function window:Destroy()
         if uiAlive then screen:Destroy() end

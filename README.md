@@ -1,4 +1,4 @@
-# Viz 1.0.1
+# Viz 1.0.2
 
 A Roblox client UI library with detachable groupboxes, search, keybinds, and configurable navigation.
 
@@ -16,7 +16,7 @@ The release has three runtime modules:
 
 **Roblox Studio:** create three ModuleScripts named `Library`, `SaveManager`, and `ThemeManager` beside a LocalScript containing `Example.lua`. The UI runs on the client.
 
-**Executor:** copy the `Viz` folder into the executor's file workspace and run `Example.lua`. Its loader reads the three local files; there is no required remote loader. The runtime modules also work through `loadstring`.
+**Executor:** run `loadstring(game:HttpGet("https://raw.githubusercontent.com/viseamn/Visual/main/Example.lua"))()`. The example loads the three modules from the repository. For Studio, replace its three remote module loads with the `require` calls below.
 
 ```lua
 local Library = require(script.Parent.Library)
@@ -88,7 +88,7 @@ Library:Unload()
 
 `CreateWindow` accepts `Title`, `Size` (`Vector2`), `Layout`, `MenuKey`, and `AutoHide`. It replaces the previous window created by that library instance. The default layout is Top bar; the menu key is RightShift. Create your tabs before loading a config. After replacing a window, bind managers again with `SetLibrary`.
 
-Navigation uses compact icon buttons with tooltips and a subtle selected state. Quick settings and user profiles are removed. Theme controls are available in the Settings tab through ThemeManager. Corner radius, animation speed, and UI scale are fixed; the window still fits the viewport automatically. Group positions stay in the current session. Configs save control values, layout, menu key, navigation auto-hide, keybind list visibility, and theme.
+Navigation uses compact icon buttons centered vertically in the sidebar, with tooltips and a subtle selected state. The header uses the cloud logo and a wide search field. Interface contains the keybind controls; layout and auto-hide are in Themes > Style. Quick settings and user profiles are removed. Theme controls are available in the Settings tab through ThemeManager. Corner radius, animation speed, and UI scale are fixed; the window still fits the viewport automatically. Group positions stay in the current session. Configs save control values, layout, menu key, navigation auto-hide, keybind list visibility, and theme.
 
 ## Config and theme API
 
