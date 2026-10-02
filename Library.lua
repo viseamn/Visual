@@ -862,7 +862,7 @@ function Library:CreateWindow(config)
     searchPadding.PaddingLeft = UDim.new(0, 34)
     searchPadding.PaddingRight = UDim.new(0, 12)
     searchPadding.Parent = globalSearch
-    icon(globalSearch, "search", 10, 6, 16, "Muted")
+    icon(header, "search", 76, 19, 16, "Muted")
     local function searchMatches(text, query)
         return query == "" or string.find(string.lower(tostring(text or "")), query, 1, true) ~= nil
     end
