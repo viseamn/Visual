@@ -849,10 +849,10 @@ function Library:CreateWindow(config)
     end))
     root:GetPropertyChangedSignal("Position"):Connect(function() closeDropdown(true) end)
     viewport:GetPropertyChangedSignal("AbsoluteSize"):Connect(function() closeDropdown(true) end)
-    local globalSearch = rounded("TextBox", "GlobalSearch", header, 66, 11, 0, 32, "Search", 10)
-    globalSearch.Size = UDim2.new(1, -90, 0, 32)
+    local globalSearch = rounded("TextBox", "GlobalSearch", header, 66, 13, 220, 28, "Search", 8)
     globalSearch.Text = ""
-    globalSearch.PlaceholderText = "Search all controls..."
+    globalSearch.PlaceholderText = "search"
+    globalSearch.TextXAlignment = Enum.TextXAlignment.Left
     globalSearch.ClearTextOnFocus = false
     globalSearch.TextSize = 12
     setUIFont(globalSearch)
@@ -862,7 +862,7 @@ function Library:CreateWindow(config)
     searchPadding.PaddingLeft = UDim.new(0, 34)
     searchPadding.PaddingRight = UDim.new(0, 12)
     searchPadding.Parent = globalSearch
-    icon(header, "search", 76, 19, 16, "Muted")
+    icon(globalSearch, "search", 10, 6, 16, "Muted")
     local function searchMatches(text, query)
         return query == "" or string.find(string.lower(tostring(text or "")), query, 1, true) ~= nil
     end
