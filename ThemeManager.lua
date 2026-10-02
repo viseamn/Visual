@@ -1,7 +1,7 @@
 local HttpService = game:GetService("HttpService")
 
 local function newManager()
-    local ThemeManager = { Version = "1.0.2", Folder = "Viz", Current = "Default" }
+    local ThemeManager = { Version = "1.0.3", Folder = "Viz", Current = "Default" }
     local window, context
     local Theme, defaultTheme
     local function bound()

@@ -1,6 +1,6 @@
-# Viz 1.0.2
+# Viz 1.0.3
 
-A Roblox client UI library with detachable groupboxes, search, keybinds, and configurable navigation.
+A Roblox client UI library with detachable groupboxes, search, keybinds, and a bottom navigation bar.
 
 The release has three runtime modules:
 
@@ -23,7 +23,7 @@ local Library = require(script.Parent.Library)
 local SaveManager = require(script.Parent.SaveManager)
 local ThemeManager = require(script.Parent.ThemeManager)
 
-local Window = Library:CreateWindow({Title = "Viz", Layout = "Top bar"})
+local Window = Library:CreateWindow({Title = "Viz", Layout = "Bottom bar"})
 local Main = Window:AddTab("Main", "house")
 local Group = Main:AddLeftGroupbox("Controls", "sliders-horizontal")
 
@@ -76,7 +76,7 @@ Groupboxes have `Detach`, `Attach`, `IsDetached`, `SetCollapsed`, and `ToggleCol
 ```lua
 Window:SetVisible(false)
 Window:Toggle()
-Window:SetStyle("Top bar") -- Normal, Top bar, Bottom bar
+Window:SetStyle("Bottom bar") -- the only supported layout
 Window:SetAutoHide(true)
 Window:SetSize(Vector2.new(700, 480))
 Window:SetSearch("speed")
@@ -86,9 +86,9 @@ Window:Dialog({Title = "Continue?", Content = "Confirm this action.", OnConfirm 
 Library:Unload()
 ```
 
-`CreateWindow` accepts `Title`, `Size` (`Vector2`), `Layout`, `MenuKey`, and `AutoHide`. It replaces the previous window created by that library instance. The default layout is Top bar; the menu key is RightShift. Create your tabs before loading a config. After replacing a window, bind managers again with `SetLibrary`.
+`CreateWindow` accepts `Title`, `Size` (`Vector2`), `Layout`, `MenuKey`, and `AutoHide`. It replaces the previous window created by that library instance. Bottom bar is the only supported layout; the menu key is RightShift. Create your tabs before loading a config. After replacing a window, bind managers again with `SetLibrary`.
 
-Navigation uses compact icon buttons centered vertically in the sidebar, with tooltips and a subtle selected state. The header uses the cloud logo and a wide search field. Interface contains the keybind controls; layout and auto-hide are in Themes > Style. Quick settings and user profiles are removed. Theme controls are available in the Settings tab through ThemeManager. Corner radius, animation speed, and UI scale are fixed; the window still fits the viewport automatically. Group positions stay in the current session. Configs save control values, layout, menu key, navigation auto-hide, keybind list visibility, and theme.
+Navigation uses the original bottom bar with icon buttons and a decorative user avatar. The avatar has no click action. The header uses the cloud logo and a wide search field. Interface contains the keybind controls; auto-hide is in Themes > Style. Quick settings and the user profile card are removed. Legacy config layout values are restored as Bottom bar. Theme controls are available in the Settings tab through ThemeManager. Corner radius, animation speed, and UI scale are fixed; the window still fits the viewport automatically. Group positions stay in the current session. Configs save control values, layout, menu key, navigation auto-hide, keybind list visibility, and theme.
 
 ## Config and theme API
 
@@ -114,7 +114,7 @@ Config values and theme data are validated before application. A failed write ro
 
 ## Validation
 
-The release compiles with Luau and passes `Test/viz_runtime_checks.cjs`: the complete example, ID handling, config/theme round-trips, invalid input, rollback, file operations, nested folders, autoload, detaching/attaching, visibility reversal, clean navigation, removed profiles, cleanup, and rebinding. These are headless checks with Roblox service mocks. Direct in-game rendering still needs verification; the connected client closed during that check.
+The release compiles with Luau and passes `Test/viz_runtime_checks.cjs`: the complete example, ID handling, config/theme round-trips, invalid input, rollback, file operations, nested folders, autoload, detaching/attaching, visibility reversal, bottom navigation, decorative profile, cleanup, and rebinding. These are headless checks with Roblox service mocks. Direct in-game rendering still needs verification; the connected client closed during that check.
 
 ```powershell
 node Test/viz_runtime_checks.cjs <path-to-luau.exe>

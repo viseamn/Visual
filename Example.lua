@@ -6,7 +6,7 @@ local ThemeManager = loadstring(game:HttpGet(repo .. "ThemeManager.lua"))()
 local Window = Library:CreateWindow({
     Title = "Viz",
     Size = Vector2.new(640, 460),
-    Layout = "Top bar",
+    Layout = "Bottom bar",
     MenuKey = Enum.KeyCode.RightShift,
 })
 

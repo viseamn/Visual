@@ -1,5 +1,5 @@
--- Viz 1.0.0
-local Library = { Version = "1.0.2" }
+-- Viz 1.0.3
+local Library = { Version = "1.0.3" }
 local function safeName(name)
     return type(name) == "string" and #name > 0 and #name <= 64 and name:match("^[%w _%-]+$") and name:match("%S")
 end
@@ -78,10 +78,7 @@ function Library:CreateWindow(config)
     config = config or {}
     assert(type(config) == "table", "CreateWindow expects an options table")
     assert(config.Title == nil or type(config.Title) == "string", "Title expects a string")
-    assert(
-        config.Layout == nil or config.Layout == "Normal" or config.Layout == "Top bar" or config.Layout == "Bottom bar",
-        "Unknown layout"
-    )
+    assert(config.Layout == nil or config.Layout == "Bottom bar", "Unknown layout")
     if config.Size then
         assert(
             typeof(config.Size) == "Vector2"
@@ -255,8 +252,7 @@ function Library:CreateWindow(config)
     root.Parent = viewport
     glassSurface(root, 0.12)
 
-    local layoutStyle = "Normal"
-    local function isDockLayout() return layoutStyle == "Bottom bar" or layoutStyle == "Top bar" end
+    local layoutStyle = "Bottom bar"
     local uiShown = true
     local windowTransitioning = false
     local windowMotionHost = Instance.new("Frame")
@@ -299,10 +295,9 @@ function Library:CreateWindow(config)
     screen.Destroying:Connect(function() resizeConnection:Disconnect() end)
     resize()
 
-    local navigationWidth = 60
-    local sidebar = rounded("Frame", "Sidebar", root, 0, 0, navigationWidth, 447, "Background", 17)
+    local sidebar = rounded("Frame", "Sidebar", root, 0, 0, 0, 447, "Background", 17)
     sidebar.BackgroundTransparency = 1
-    local body = rounded("Frame", "Body", root, navigationWidth, 0, 584, 447, "Background", 17)
+    local body = rounded("Frame", "Body", root, 0, 0, 584, 447, "Background", 17)
     body.BackgroundTransparency = 1
     local backgroundImage = Instance.new("ImageLabel")
     backgroundImage.Name = "BackgroundImage"
@@ -315,7 +310,7 @@ function Library:CreateWindow(config)
     local backgroundCorner = Instance.new("UICorner")
     backgroundCorner.CornerRadius = UDim.new(0, 17)
     backgroundCorner.Parent = backgroundImage
-    local header = rounded("Frame", "Header", root, navigationWidth, 0, 584, 54, "Background", 17)
+    local header = rounded("Frame", "Header", root, 0, 0, 584, 54, "Background", 17)
     header.BackgroundTransparency = 1
 
     local iconAtlas = {
@@ -386,25 +381,7 @@ function Library:CreateWindow(config)
     navigationLayout.Parent = navigationGroup
     local navigationPadding = Instance.new("UIPadding")
     navigationPadding.Parent = navigationGroup
-    local function centerNavigation()
-        if isDockLayout() then
-            refreshDockLayout()
-            return
-        end
-        navigationPadding.PaddingTop = UDim.new(0, 12)
-        navigationPadding.PaddingBottom = UDim.new(0, 12)
-        navigationLayout.VerticalAlignment = navigationLayout.AbsoluteContentSize.Y
-                    > navigationGroup.AbsoluteSize.Y - 24
-                and Enum.VerticalAlignment.Top
-            or Enum.VerticalAlignment.Center
-    end
-    local navigationSizeConnection = navigationGroup:GetPropertyChangedSignal("AbsoluteSize"):Connect(centerNavigation)
-    local navigationContentConnection =
-        navigationLayout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(centerNavigation)
-    screen.Destroying:Connect(function()
-        navigationSizeConnection:Disconnect()
-        navigationContentConnection:Disconnect()
-    end)
+    local function centerNavigation() refreshDockLayout() end
 
     local navigation, tabs = {}, {}
     local activeTab
@@ -3211,9 +3188,9 @@ function Library:CreateWindow(config)
             tab.Page.Visible = active
             tab.Page.GroupTransparency = active and 1 or 0
             tab.Page.Position = UDim2.fromOffset(0, active and 6 or 0)
-            motion(tab.Button, { BackgroundTransparency = active and 0.2 or 1 }, 0.22)
-            motion(tab.Scale, { Scale = 1 }, 0.22)
-            motion(tab.Stroke, { Transparency = 1 }, 0.22)
+            motion(tab.Button, { BackgroundTransparency = active and 0.12 or 1 }, 0.22)
+            motion(tab.Scale, { Scale = active and 1.04 or 1 }, 0.22)
+            motion(tab.Stroke, { Transparency = active and 0.18 or 1 }, 0.22)
             tweenIcon(tab.Icon, "Icon")
             tween(tab.Icon, { ImageTransparency = active and 0 or 0.4 }, 0.16)
         end
@@ -3236,6 +3213,7 @@ function Library:CreateWindow(config)
         stroke.Transparency = 1
         stroke.Parent = button
         tab.Stroke = stroke
+        glassSurface(button, 1, stroke)
         addTooltip(button, tab.Name)
         tab.Scale = Instance.new("UIScale")
         tab.Scale.Parent = button
@@ -3299,9 +3277,9 @@ function Library:CreateWindow(config)
         local hovering = false
         local function navigationFeedback(pressed)
             local selected = activeTab == tab
-            motion(tab.Scale, { Scale = pressed and 0.98 or 1 }, 0.16)
-            motion(button, { BackgroundTransparency = selected and 0.2 or (hovering and 0.82 or 1) }, 0.16)
-            motion(stroke, { Transparency = 1 }, 0.16)
+            motion(tab.Scale, { Scale = pressed and 0.94 or ((selected or hovering) and 1.04 or 1) }, 0.16)
+            motion(button, { BackgroundTransparency = selected and 0.12 or (hovering and 0.62 or 1) }, 0.16)
+            motion(stroke, { Transparency = selected and 0.18 or (hovering and 0.75 or 1) }, 0.16)
             motion(tab.Icon, { ImageTransparency = (selected or hovering) and 0 or 0.4 }, 0.16)
         end
         button.MouseEnter:Connect(function()
@@ -3713,11 +3691,33 @@ function Library:CreateWindow(config)
         refreshKeybindMenu()
     end
     refreshKeybindMenu()
+    local profile = rounded("ImageLabel", "Profile", sidebar, 0, 0, 40, 40, Color3.fromRGB(114, 105, 133), 20)
+    profile.AnchorPoint = Vector2.new(1, 0.5)
+    profile.Position = UDim2.new(1, -12, 0.5, 0)
+    profile.ClipsDescendants = true
+    local profileRim = Instance.new("UIStroke")
+    profileRim.Color = Color3.fromRGB(239, 228, 255)
+    profileRim.Transparency = 0.68
+    profileRim.Thickness = 1
+    profileRim.Parent = profile
+    task.spawn(function()
+        local ok, thumbnail = pcall(
+            function()
+                return Players:GetUserThumbnailAsync(
+                    player.UserId,
+                    Enum.ThumbnailType.HeadShot,
+                    Enum.ThumbnailSize.Size100x100
+                )
+            end
+        )
+        if ok and profile.Parent then profile.Image = thumbnail end
+    end)
+
     local dockHost = Instance.new("Frame")
     dockHost.Name = "BottomBar"
     dockHost.AnchorPoint = Vector2.new(0.5, 1)
     dockHost.Position = UDim2.new(0.5, 0, 1, 76)
-    dockHost.Size = UDim2.fromOffset(180, 56)
+    dockHost.Size = UDim2.fromOffset(180, 64)
     dockHost.BackgroundTransparency = 1
     dockHost.Visible = false
     dockHost.ZIndex = 20
@@ -3732,6 +3732,9 @@ function Library:CreateWindow(config)
     dockRim.Transparency = 0.92
     dockRim.Thickness = 1
     dockRim.Parent = dockGlass
+    local dockDivider = rounded("Frame", "ProfileDivider", dockGlass, 0, 16, 1, 32, "Text", 1)
+    dockDivider.Position = UDim2.new(1, -62, 0, 16)
+    dockDivider.BackgroundTransparency = 0.9
     local dockReveal = rounded("TextButton", "RevealBottomBar", viewport, 0, 0, 104, 20, "Background", 6)
     dockReveal.BackgroundTransparency = 1
     dockReveal.AnchorPoint = Vector2.new(0.5, 1)
@@ -3747,18 +3750,16 @@ function Library:CreateWindow(config)
     local revealHover, revealHoverAmount = false, 0
     local function renderDock()
         local progress = math.clamp(dockProgress, 0, 1)
-        local top = layoutStyle == "Top bar"
-        dockHost.AnchorPoint = Vector2.new(0.5, top and 0 or 1)
-        dockHost.Position =
-            UDim2.new(0.5, 0, top and 0 or 1, top and (-76 + 90 * dockProgress) or (76 - 90 * dockProgress))
+        dockHost.AnchorPoint = Vector2.new(0.5, 1)
+        dockHost.Position = UDim2.new(0.5, 0, 1, 76 - 90 * dockProgress)
         dockScale.Scale = dockFitScale * (0.94 + 0.06 * dockProgress)
         dockGlass.BackgroundTransparency = 0.08 + (1 - progress) * 0.22
         dockRim.Transparency = 0.92 + (1 - progress) * 0.08
-        local reveal = (isDockLayout() and dockAutoHide) and (1 - progress) or 0
+        local reveal = dockAutoHide and (1 - progress) or 0
         dockReveal.Visible = reveal > 0.005
         dockReveal.Interactable = not dockExpanded and reveal > 0.2
-        dockReveal.AnchorPoint = Vector2.new(0.5, top and 0 or 1)
-        dockReveal.Position = UDim2.new(0.5, 0, top and 0 or 1, top and (2 - 6 * progress) or (-2 + 6 * progress))
+        dockReveal.AnchorPoint = Vector2.new(0.5, 1)
+        dockReveal.Position = UDim2.new(0.5, 0, 1, -2 + 6 * progress)
         grip.Size = UDim2.fromOffset((80 + 8 * revealHoverAmount) * (0.86 + 0.14 * reveal), 4)
         grip.BackgroundTransparency = 1 - reveal * (0.45 + 0.12 * revealHoverAmount)
     end
@@ -3770,28 +3771,26 @@ function Library:CreateWindow(config)
         renderDock()
     end
     refreshDockLayout = function()
-        if not isDockLayout() then return end
-        local top = layoutStyle == "Top bar"
         for _, tab in ipairs(tabs) do
-            tab.Button.Size = UDim2.fromOffset(top and 104 or 40, 40)
-            tab.Icon.Position = UDim2.fromOffset(10, 10)
-            tab.Icon.Size = UDim2.fromOffset(20, 20)
-            tab.Title.Visible = top
+            tab.Button.Size = UDim2.fromOffset(44, 44)
+            tab.Icon.Position = UDim2.fromOffset(11, 11)
+            tab.Icon.Size = UDim2.fromOffset(22, 22)
+            tab.Title.Visible = false
         end
-        local width = math.min(24 + #tabs * (top and 110 or 46), math.max(128, viewport.AbsoluteSize.X - 24))
-        dockHost.Size = UDim2.fromOffset(width, 56)
+        local width = math.min(76 + #tabs * 52, math.max(128, viewport.AbsoluteSize.X - 24))
+        dockHost.Size = UDim2.fromOffset(width, 64)
         dockFitScale = math.min(1, math.max(0.1, (viewport.AbsoluteSize.X - 24) / width))
         renderDock()
         sidebar.Size = UDim2.fromScale(1, 1)
         navigationGroup.Position = UDim2.fromOffset(8, 6)
-        navigationGroup.Size = UDim2.new(1, -16, 0, 44)
-        navigationPadding.PaddingTop = UDim.new(0, 2)
-        navigationPadding.PaddingBottom = UDim.new(0, 2)
+        navigationGroup.Size = UDim2.new(1, -72, 0, 52)
+        navigationPadding.PaddingTop = UDim.new(0, 4)
+        navigationPadding.PaddingBottom = UDim.new(0, 4)
         navigationPadding.PaddingLeft = UDim.new(0, 4)
         navigationPadding.PaddingRight = UDim.new(0, 4)
     end
     local function setLayoutStyle(value)
-        assert(value == "Normal" or value == "Bottom bar" or value == "Top bar", "Unknown UI style")
+        assert(value == "Bottom bar", "Viz only supports Bottom bar")
         finishUIVisibility()
         cancelKeyCapture()
         closeDropdown(true)
@@ -3799,52 +3798,34 @@ function Library:CreateWindow(config)
         finishColorDrag()
         cancelWindowDrag()
         cancelWindowResize()
-        layoutStyle = value
-        local docked = isDockLayout()
-        for _, tab in ipairs(tabs) do
-            tab.Button.Size = UDim2.fromOffset(40, 40)
-            tab.Icon.Position, tab.Icon.Size = UDim2.fromOffset(10, 10), UDim2.fromOffset(20, 20)
-            tab.Title.Visible = false
-        end
-        sidebar.Parent = docked and dockHost or root
+        sidebar.Parent = dockHost
         sidebar.Position = UDim2.fromOffset(0, 0)
-        sidebar.Size = UDim2.fromOffset(navigationWidth, windowContentSize.Y)
-        sidebar.Active = not docked
-        sidebar.BackgroundTransparency = 1
-        navigationLayout.Padding = UDim.new(0, 6)
-        root.Size = UDim2.fromOffset(windowContentSize.X + (docked and 0 or navigationWidth), windowContentSize.Y)
-        body.Position = UDim2.fromOffset(docked and 0 or navigationWidth, 0)
-        header.Position = UDim2.fromOffset(docked and 0 or navigationWidth, 0)
-        body.Size = UDim2.new(1, docked and 0 or -navigationWidth, 1, 0)
-        header.Size = UDim2.new(1, docked and 0 or -navigationWidth, 0, 54)
-        navigationLayout.FillDirection = docked and Enum.FillDirection.Horizontal or Enum.FillDirection.Vertical
-        navigationLayout.HorizontalAlignment = docked and Enum.HorizontalAlignment.Left
-            or Enum.HorizontalAlignment.Center
-        navigationLayout.VerticalAlignment = docked and Enum.VerticalAlignment.Center or Enum.VerticalAlignment.Top
+        sidebar.Active = false
+        navigationLayout.Padding = UDim.new(0, 8)
+        navigationLayout.FillDirection = Enum.FillDirection.Horizontal
+        navigationLayout.HorizontalAlignment = Enum.HorizontalAlignment.Left
+        navigationLayout.VerticalAlignment = Enum.VerticalAlignment.Center
         navigationGroup.CanvasPosition = Vector2.zero
         navigationGroup.CanvasSize = UDim2.fromOffset(0, 0)
-        navigationPadding.PaddingLeft = UDim.new(0, 0)
-        navigationPadding.PaddingRight = UDim.new(0, 0)
-        navigationGroup.AutomaticCanvasSize = docked and Enum.AutomaticSize.X or Enum.AutomaticSize.Y
-        navigationGroup.ScrollingDirection = docked and Enum.ScrollingDirection.X or Enum.ScrollingDirection.Y
-        navigationGroup.Position = UDim2.fromOffset(0, 0)
-        navigationGroup.Size = UDim2.fromScale(1, 1)
-        dockHost.Visible = docked
-        centerNavigation()
+        navigationGroup.AutomaticCanvasSize = Enum.AutomaticSize.X
+        navigationGroup.ScrollingDirection = Enum.ScrollingDirection.X
+        root.Size = UDim2.fromOffset(windowContentSize.X, windowContentSize.Y)
+        body.Position = UDim2.fromOffset(0, 0)
+        header.Position = UDim2.fromOffset(0, 0)
+        body.Size = UDim2.fromScale(1, 1)
+        header.Size = UDim2.new(1, 0, 0, 54)
+        dockHost.Visible = true
         refreshDockLayout()
         resize()
         dockHoverUntil = os.clock() + 1.2
-        showDock(docked, true)
+        showDock(true, true)
     end
     do
         local home, savedPosition
         local revision = 0
         local function landingPoint()
-            local center = 14 + 28 * dockFitScale
-            return Vector2.new(
-                viewport.AbsoluteSize.X / 2,
-                layoutStyle == "Top bar" and center or viewport.AbsoluteSize.Y - center
-            )
+            local center = 14 + 32 * dockFitScale
+            return Vector2.new(viewport.AbsoluteSize.X / 2, viewport.AbsoluteSize.Y - center)
         end
         finishUIVisibility = function()
             revision = revision + 1
@@ -3860,10 +3841,6 @@ function Library:CreateWindow(config)
             resize()
         end
         animateUIVisibility = function(visible)
-            if not isDockLayout() then
-                finishUIVisibility()
-                return
-            end
             revision = revision + 1
             local currentRevision = revision
             if not windowTransitioning then
@@ -3895,7 +3872,7 @@ function Library:CreateWindow(config)
     end
     local function setDockAutoHide(value)
         dockAutoHide = value == true
-        if isDockLayout() then showDock(not dockAutoHide) end
+        showDock(not dockAutoHide)
     end
     dockReveal.Activated:Connect(function()
         dockHoverUntil = os.clock() + 2
@@ -3905,15 +3882,11 @@ function Library:CreateWindow(config)
     dockReveal.MouseLeave:Connect(function() revealHover = false end)
     track(viewport:GetPropertyChangedSignal("AbsoluteSize"):Connect(refreshDockLayout))
     local function updateDockHover(mouse, now)
-        if not isDockLayout() or not dockAutoHide then return end
+        if not dockAutoHide then return end
         local half = dockExpanded and (dockHost.AbsoluteSize.X / 2 + 12) or 56
         local near = math.abs(mouse.X - viewport.AbsoluteSize.X / 2) <= half
-            and (
-                layoutStyle == "Top bar" and mouse.Y >= -2 and mouse.Y <= (dockExpanded and 96 or 18)
-                or layoutStyle == "Bottom bar"
-                    and mouse.Y >= viewport.AbsoluteSize.Y - (dockExpanded and 96 or 18)
-                    and mouse.Y <= viewport.AbsoluteSize.Y + 2
-            )
+            and mouse.Y >= viewport.AbsoluteSize.Y - (dockExpanded and 96 or 18)
+            and mouse.Y <= viewport.AbsoluteSize.Y + 2
         if near then dockHoverUntil = now + 0.65 end
         local expanded = near or now < dockHoverUntil
         if expanded ~= dockExpanded then showDock(expanded) end
@@ -3925,7 +3898,6 @@ function Library:CreateWindow(config)
                 - viewport.AbsolutePosition,
             os.clock()
         )
-        if not isDockLayout() then return end
         local target = dockExpanded and 1 or 0
         local omega, damping = 18, 0.86
         local frequency = omega * math.sqrt(1 - damping * damping)
@@ -3976,7 +3948,7 @@ function Library:CreateWindow(config)
         then
             return
         end
-        if isDockLayout() and inside(input.Position, dockHost) then return end
+        if inside(input.Position, dockHost) then return end
         if
             windowTransitioning
             or dragInput
@@ -3997,7 +3969,7 @@ function Library:CreateWindow(config)
         dragRendered = windowStart
     end
     body.Active = true
-    sidebar.Active = not isDockLayout()
+    sidebar.Active = false
     header.Active = true
     bindDragStart(root, beginDrag)
     local function moveDrag(input)
@@ -4045,10 +4017,9 @@ function Library:CreateWindow(config)
 
     local function setWindowSize(size)
         assert(typeof(size) == "Vector2", "Window size expects Vector2")
-        local sidebarWidth = isDockLayout() and 0 or navigationWidth
+        local sidebarWidth = 0
         windowContentSize = Vector2.new(math.clamp(size.X - sidebarWidth, 420, 1600), math.clamp(size.Y, 320, 1000))
         root.Size = UDim2.fromOffset(windowContentSize.X + sidebarWidth, windowContentSize.Y)
-        if not isDockLayout() then sidebar.Size = UDim2.fromOffset(navigationWidth, windowContentSize.Y) end
         resize()
         if root.Position.X.Scale == 0 and root.Position.Y.Scale == 0 then
             local position = clampWindow(windowAnchor())
@@ -4100,15 +4071,9 @@ function Library:CreateWindow(config)
                 and event.UserInputType == Enum.UserInputType.MouseMovement
             if event ~= input and not mouse then return end
             local delta = (Vector2.new(event.Position.X, event.Position.Y) - pointerStart) / initialScale
-            local minimumWidth = isDockLayout() and 420 or 487
+            local minimumWidth = 420
             local available = viewport.AbsoluteSize
-            local maxWidth = math.max(
-                minimumWidth,
-                math.min(
-                    1600 + (isDockLayout() and 0 or navigationWidth),
-                    (available.X - topLeft.X - 16) / initialScale
-                )
-            )
+            local maxWidth = math.max(minimumWidth, math.min(1600, (available.X - topLeft.X - 16) / initialScale))
             local maxHeight = math.max(320, math.min(1000, (available.Y - topLeft.Y - 16) / initialScale))
             target = Vector2.new(
                 math.clamp(initialSize.X + delta.X, minimumWidth, maxWidth),
@@ -4141,7 +4106,7 @@ function Library:CreateWindow(config)
         track(viewport:GetPropertyChangedSignal("AbsoluteSize"):Connect(cancelWindowResize))
     end
 
-    local styleControl, autoHideControl, keybindListControl, settingsTab
+    local autoHideControl, keybindListControl, settingsTab
     menuKeybind = { Keybind = config.MenuKey or Enum.KeyCode.RightShift, Modifiers = {} }
     function menuKeybind:RefreshKeybind() end
     function menuKeybind:SetModifiers(value)
@@ -4178,10 +4143,7 @@ function Library:CreateWindow(config)
             return true
         end
     )
-    local function applyStyle(value)
-        setLayoutStyle(value)
-        if styleControl then styleControl:Set(value, true) end
-    end
+    local function applyStyle(value) setLayoutStyle("Bottom bar") end
     local function applyAutoHide(value)
         setDockAutoHide(value)
         if autoHideControl then autoHideControl:Set(value, true) end
@@ -4214,7 +4176,7 @@ function Library:CreateWindow(config)
         applyKeybindList,
         function(value) return type(value) == "boolean" end
     )
-    applyStyle(config.Layout or "Top bar")
+    applyStyle("Bottom bar")
     applyAutoHide(config.AutoHide == true)
     if config.Size then
         assert(typeof(config.Size) == "Vector2", "Window Size expects Vector2")
@@ -4243,8 +4205,8 @@ function Library:CreateWindow(config)
         Theme = Theme,
         Navigation = navigation,
         NavigationBar = dockHost,
-        TopBar = dockHost,
         BottomBar = dockHost,
+        Profile = profile,
         KeybindMenu = keybindMenu,
         KeybindFrame = keybindMenu.Frame,
         MenuKeybind = menuKeybind,
@@ -4284,7 +4246,10 @@ function Library:CreateWindow(config)
     function window:SetVisible(value) setUIVisible(value) end
     function window:IsVisible() return uiShown end
     function window:Toggle() setUIVisible(not uiShown) end
-    function window:SetStyle(value) applyStyle(value) end
+    function window:SetStyle(value)
+        assert(value == "Bottom bar", "Viz only supports Bottom bar")
+        applyStyle(value)
+    end
     function window:GetStyle() return layoutStyle end
     function window:SetAutoHide(value) applyAutoHide(value == true) end
     function window:SetTitle(text) title.Text = tostring(text) end
@@ -4309,14 +4274,7 @@ function Library:CreateWindow(config)
         return settingsTab
     end
     function window:AddStyleControls(section)
-        if styleControl then return end
-        styleControl = section:AddDropdown({
-            Name = "UI style",
-            Values = { "Normal", "Top bar", "Bottom bar" },
-            Default = layoutStyle,
-            NoSave = true,
-            Callback = applyStyle,
-        })
+        if autoHideControl then return end
         autoHideControl = section:AddCheckbox({
             Name = "Auto-hide bar",
             Default = dockAutoHide,
