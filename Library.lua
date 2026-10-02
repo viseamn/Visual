@@ -97,6 +97,7 @@ function Library:CreateWindow(config)
     local Players = game:GetService("Players")
     local UserInputService = game:GetService("UserInputService")
     local TweenService = game:GetService("TweenService")
+    local TextService = game:GetService("TextService")
     local HttpService = game:GetService("HttpService")
     local player = Players.LocalPlayer
     assert(player, "Viz must run on the client")
@@ -131,6 +132,25 @@ function Library:CreateWindow(config)
         return contrast(light, background) >= contrast(dark, background) and light or dark
     end
     local function refreshContrastColors()
+        -- Keep secondary text legible on every surface that uses it.
+        local surfaces = { Theme.Background, Theme.Card, Theme.Search, Theme.Navigation }
+        local function readable(color)
+            for _, surface in ipairs(surfaces) do
+                if contrast(color, surface) < 4.5 then return false end
+            end
+            return true
+        end
+        if not readable(Theme.Muted) then
+            local target = readable(Theme.Text) and Theme.Text or contrastingText(Theme.Card)
+            local original = Theme.Muted
+            for step = 1, 100 do
+                local candidate = original:Lerp(target, step / 100)
+                if readable(candidate) then
+                    Theme.Muted = candidate
+                    break
+                end
+            end
+        end
         Theme.OnAccent = contrastingText(Theme.Accent)
         Theme.SelectedText = contrast(Theme.Accent, Theme.Selected) >= 4.5 and Theme.Accent
             or contrastingText(Theme.Selected)
@@ -417,6 +437,22 @@ function Library:CreateWindow(config)
         PageDown = "PgD",
         Space = "Spc",
     }
+    local function keybindText(control, listening)
+        if listening then return "..." end
+        if control.Keybind == Enum.KeyCode.Unknown then return "" end
+        local parts = {}
+        for _, name in ipairs({ "Ctrl", "Shift", "Alt" }) do
+            if control.Modifiers[name] then table.insert(parts, name) end
+        end
+        table.insert(parts, shortKeyNames[control.Keybind.Name] or control.Keybind.Name)
+        return table.concat(parts, " + ")
+    end
+    local function keybindWidth(button)
+        if button.Text == "" then return 24 end
+        return math.max(24, math.ceil(TextService:GetTextSize(
+            button.Text, button.TextSize, button.Font, Vector2.new(10000, 10000)
+        ).X) + 12)
+    end
     local capturingKeybind
     local closeDropdown
     local menuKeybind
@@ -1018,6 +1054,13 @@ function Library:CreateWindow(config)
     local function createColorPicker(owner, swatch, options)
         options = options or {}
         unbindTheme(swatch, "BackgroundColor3")
+        local swatchOutline = Instance.new("UIStroke")
+        swatchOutline.Name = "SwatchOutline"
+        swatchOutline.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+        swatchOutline.Color = Color3.new(1, 1, 1)
+        swatchOutline.Thickness = 1
+        swatchOutline.Transparency = 0.45
+        swatchOutline.Parent = swatch
         local picker = { Revision = 0, Trigger = swatch }
         local hue, saturation, brightness, opacity = 0, 1, 1, 1
         local pickerWidth, pickerHeight = 194, 230
@@ -1153,7 +1196,7 @@ function Library:CreateWindow(config)
             picker.Value = color
             picker.Transparency = 1 - opacity
             swatch.BackgroundColor3 = color
-            swatch.BackgroundTransparency = 0
+            swatch.BackgroundTransparency = picker.Transparency
             marker.Position = UDim2.fromScale(saturation, 1 - brightness)
             saturationGradient.Color = ColorSequence.new(Color3.new(1, 1, 1), Color3.fromHSV(hue, 1, 1))
             hueCore.BackgroundColor3 = Color3.fromHSV(hue, 1, 1)
@@ -1234,12 +1277,17 @@ function Library:CreateWindow(config)
             end
             hexInput.Text = hexValue
         end)
+        local copyRevision = 0
         copyButton.Activated:Connect(function()
             local copied = type(setclipboard) == "function" and pcall(setclipboard, hexValue)
             if copied then
+                copyRevision = copyRevision + 1
+                local revision = copyRevision
                 bindTheme(copyIcon, "ImageColor3", "Accent")
                 task.delay(0.6, function()
-                    if uiAlive and copyIcon.Parent then copyIcon.ImageColor3 = Theme.Muted end
+                    if uiAlive and copyIcon.Parent and copyRevision == revision then
+                        bindTheme(copyIcon, "ImageColor3", "Muted")
+                    end
                 end)
             else
                 hexInput:CaptureFocus()
@@ -1455,6 +1503,7 @@ function Library:CreateWindow(config)
         setUIFont(titleText, true)
         titleText.Position = UDim2.fromOffset(24, 0)
         titleText.Size = UDim2.new(1, -48, 1, 0)
+        titleText.TextTruncate = Enum.TextTruncate.AtEnd
         titleText.TextYAlignment = Enum.TextYAlignment.Center
 
         if config.Description then
@@ -1774,6 +1823,7 @@ function Library:CreateWindow(config)
             local container = row(options.Name or "Keybind", 28)
             local text = label(container, options.Name or "Keybind")
             text.Size = UDim2.new(1, -32, 1, 0)
+            text.TextTruncate = Enum.TextTruncate.AtEnd
             local button = rounded("TextButton", "Keybind", container, 0, 3, 24, 22, "Search", 6)
             button.Position = UDim2.new(1, -24, 0, 3)
             button.BackgroundTransparency = 1
@@ -1783,12 +1833,27 @@ function Library:CreateWindow(config)
             button.TextTruncate = Enum.TextTruncate.AtEnd
             animateButton(button, "Search")
             local control = { Keybind = Enum.KeyCode.Unknown, Modifiers = {}, AllowModifierKey = true }
+            local function layoutKeybind()
+                local available = container.AbsoluteSize.X / math.max(0.01, groupFactor())
+                if available <= 0 then return end
+                local desiredWidth = keybindWidth(button)
+                local width = math.min(desiredWidth, available)
+                local wrapped = desiredWidth > available
+                local stacked = available - width - 8 < 80
+                container.Size = UDim2.new(1, 0, 0, wrapped and 76 or (stacked and 52 or 28))
+                text.Size = stacked and UDim2.new(1, 0, 0, 20) or UDim2.new(1, -width - 8, 1, 0)
+                button.TextWrapped = wrapped
+                button.Size = UDim2.fromOffset(width, wrapped and 46 or 22)
+                button.Position = UDim2.new(1, -width, 0, stacked and 26 or 3)
+            end
+            container:GetPropertyChangedSignal("AbsoluteSize"):Connect(layoutKeybind)
+            button:GetPropertyChangedSignal("FontFace"):Connect(layoutKeybind)
             function control:RefreshKeybind()
                 local listening = capturingKeybind == self
                 local iconOnly = not listening and self.Keybind == Enum.KeyCode.Unknown
                 keyboardIcon.Visible = iconOnly
-                button.Text = iconOnly and ""
-                    or (listening and "..." or shortKeyNames[self.Keybind.Name] or self.Keybind.Name)
+                button.Text = keybindText(self, listening)
+                layoutKeybind()
                 tween(button, { TextColor3 = listening and "Accent" or "Muted" }, 0.12)
             end
             function control:SetModifiers(value)
@@ -1917,9 +1982,6 @@ function Library:CreateWindow(config)
             text.TextTruncate = Enum.TextTruncate.AtEnd
             local swatch = rounded("TextButton", "ColorSwatch", container, 0, 5, 18, 18, "Accent", 4)
             swatch.Position = UDim2.new(1, -18, 0, 5)
-            local stroke = Instance.new("UIStroke")
-            bindTheme(stroke, "Color", "Muted")
-            stroke.Parent = swatch
             local picker = createColorPicker(container, swatch, options)
             persistColor(options, picker, container)
             tab.Columns[side]:GetPropertyChangedSignal("CanvasPosition"):Connect(function()
@@ -1962,19 +2024,39 @@ function Library:CreateWindow(config)
                 Modifiers = {},
                 Name = options.Name or "Toggle",
             }
+            local function layoutKeybind()
+                local available = container.AbsoluteSize.X / math.max(0.01, groupFactor())
+                if available <= 0 then return end
+                local desiredWidth = keybindWidth(keyButton)
+                local width = math.min(desiredWidth, available)
+                local wrapped = desiredWidth > available
+                local separateControls = width + 80 + control.ColorSpace > available
+                local stacked = separateControls or available - width - 80 - control.ColorSpace < 80
+                local y = separateControls and (wrapped and 76 or 52) or (stacked and 26 or 0)
+                container.Size = UDim2.new(1, 0, 0, separateControls and (wrapped and 102 or 78) or (stacked and 52 or 28))
+                text.Size = stacked and UDim2.new(1, 0, 0, 20)
+                    or UDim2.new(1, -80 - width - control.ColorSpace, 1, 0)
+                keyButton.TextWrapped = wrapped
+                keyButton.Size = UDim2.fromOffset(width, wrapped and 46 or 22)
+                keyButton.Position = UDim2.new(1, -width - (separateControls and 0 or 42 + control.ColorSpace),
+                    0, stacked and 29 or 3)
+                bell.Position = separateControls and UDim2.fromOffset(0, y + 2)
+                    or UDim2.new(1, -72 - width - control.ColorSpace, 0, y + 2)
+                button.Position = UDim2.new(1, -34, 0, y + 4)
+                if control.ColorPicker then
+                    control.ColorPicker.Trigger.Position = UDim2.new(1, -58, 0, y + 5)
+                end
+            end
+            container:GetPropertyChangedSignal("AbsoluteSize"):Connect(layoutKeybind)
+            keyButton:GetPropertyChangedSignal("FontFace"):Connect(layoutKeybind)
             function control:RefreshKeybind()
                 local listening = capturingKeybind == self
                 local iconOnly = not listening and self.Keybind == Enum.KeyCode.Unknown
-                local width = 24
-                keyButton.Size = UDim2.fromOffset(width, 22)
-                keyButton.Position = UDim2.new(1, -42 - width - self.ColorSpace, 0, 3)
                 keyButton.BackgroundTransparency = 1
                 keyBorder.Transparency = 1
                 keyboardIcon.Visible = iconOnly
-                bell.Position = UDim2.new(1, -72 - width - self.ColorSpace, 0, 2)
-                text.Size = UDim2.new(1, -80 - width - self.ColorSpace, 1, 0)
-                local keyName = self.Keybind == Enum.KeyCode.Unknown and "-" or self.Keybind.Name
-                keyButton.Text = iconOnly and "" or (listening and "..." or shortKeyNames[keyName] or keyName)
+                keyButton.Text = keybindText(self, listening)
+                layoutKeybind()
                 tween(keyButton, { TextColor3 = listening and "Accent" or "Muted" }, 0.15)
                 tween(keyBorder, { Color = listening and "Accent" or "Border" }, 0.15)
                 refreshKeybindMenu()
@@ -1983,9 +2065,6 @@ function Library:CreateWindow(config)
                 if self.ColorPicker then return self.ColorPicker end
                 local swatch = rounded("TextButton", "ColorSwatch", container, 0, 5, 18, 18, "Accent", 4)
                 swatch.Position = UDim2.new(1, -58, 0, 5)
-                local stroke = Instance.new("UIStroke")
-                bindTheme(stroke, "Color", "Muted")
-                stroke.Parent = swatch
                 colorOptions = colorOptions or {}
                 colorOptions.Name = colorOptions.Name or ((options.Name or "Toggle") .. " color")
                 colorOptions.NoSave = colorOptions.NoSave or options.NoSave
@@ -2039,10 +2118,10 @@ function Library:CreateWindow(config)
             end
             function control:SetNotify(enabled)
                 self.Notify = enabled == true
-                local coords = iconAtlas["bell"]
+                local coords = iconAtlas[self.Notify and "bell" or "bell-off"]
                 bellIcon.ImageRectOffset = Vector2.new(coords[1], coords[2])
                 tween(bellIcon, {
-                    ImageColor3 = self.Notify and Color3.fromRGB(255, 255, 255) or "Muted",
+                    ImageColor3 = self.Notify and "Text" or "Muted",
                     ImageTransparency = 0,
                 }, 0.18)
             end
@@ -2195,9 +2274,9 @@ function Library:CreateWindow(config)
                 return field
             end
             local first = input(isRange and "LowInput" or "ValueInput", isRange and -92 or -44, 30)
-            local second
+            local second, separator
             if isRange then
-                local separator = icon(container, "arrow-left-right", 0, 0, 16, "Muted")
+                separator = icon(container, "arrow-left-right", 0, 0, 16, "Muted")
                 separator.Name = "RangeSeparator"
                 separator.AnchorPoint = Vector2.new(0, 0.5)
                 separator.Position = UDim2.new(trackStart, -61, 0.5, 0)
@@ -2207,6 +2286,26 @@ function Library:CreateWindow(config)
             hit.Position = UDim2.new(trackStart, 0, 0, 0)
             hit.Size = UDim2.new(1 - trackStart, -8, 1, 0)
             hit.BackgroundTransparency = 1
+            local function layoutSlider()
+                local available = container.AbsoluteSize.X / math.max(0.01, groupFactor())
+                if available <= 0 then return end
+                local stacked = available < (isRange and 300 or 240)
+                container.Size = UDim2.new(1, 0, 0, stacked and 52 or 28)
+                text.Size = stacked and UDim2.new(1, isRange and -97 or -51, 0, 24)
+                    or UDim2.new(trackStart, isRange and -97 or -51, 1, 0)
+                for _, field in ipairs(second and { first, second } or { first }) do
+                    field.Size = UDim2.fromOffset(30, stacked and 24 or 28)
+                    field.Position = UDim2.new(stacked and 1 or trackStart,
+                        field == first and (isRange and -92 or -44) or -44, 0, 0)
+                end
+                if separator then
+                    separator.Position = UDim2.new(stacked and 1 or trackStart, -61, 0, stacked and 12 or 14)
+                end
+                hit.Position = stacked and UDim2.fromOffset(10, 24) or UDim2.new(trackStart, 0, 0, 0)
+                hit.Size = stacked and UDim2.new(1, -20, 0, 28) or UDim2.new(1 - trackStart, -10, 0, 28)
+            end
+            container:GetPropertyChangedSignal("AbsoluteSize"):Connect(layoutSlider)
+            layoutSlider()
             local trackFrame = rounded("Frame", "Track", hit, 0, 10, 0, 8, "Navigation", 4)
             trackFrame.Size = UDim2.new(1, 0, 0, 8)
             local fill = rounded("Frame", "Fill", trackFrame, 0, 0, 0, 8, "Accent", 4)
