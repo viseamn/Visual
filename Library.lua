@@ -553,6 +553,17 @@ function Library:CreateWindow(config)
     track(game:GetService("RunService").RenderStepped:Connect(stepGlows))
     local dockGlowLayer, dockGlowFactor
     local dragStarts = setmetatable({}, { __mode = "k" })
+    -- Eases a whole-pixel value toward a target. UDim offsets are integers, so a plain lerp can stall a
+    -- pixel short (the step rounds back to where it was); this always advances at least one pixel.
+    local function approachPixel(current, target, alpha)
+        local nextValue = current + (target - current) * alpha
+        if math.abs(target - nextValue) < 1 then return target end
+        if math.abs(nextValue - current) < 1 then return current + math.sign(target - current) end
+        return math.floor(nextValue + 0.5)
+    end
+    local function approachPixels(current, target, alpha)
+        return Vector2.new(approachPixel(current.X, target.X, alpha), approachPixel(current.Y, target.Y, alpha))
+    end
     local function passesInput(object)
         return (object:IsA("Frame") or object:IsA("ScrollingFrame"))
             and not object.Active
@@ -560,10 +571,15 @@ function Library:CreateWindow(config)
     end
     local function findDragStart(objects, boundary, bindings)
         for _, hit in ipairs(objects) do
-            if not hit:IsDescendantOf(boundary) then return end
             -- Decorative layers (glows) are skipped outright: the card glow layer lives under the
             -- title, so resolving its bindings would let a click beside a control start a card drag.
             if hit:GetAttribute("PassInput") then continue end
+            if not hit:IsDescendantOf(boundary) then
+                -- Overlays from the game's own UI (or other ScreenGuis) often cover the whole screen.
+                -- Like Roblox itself, only let buttons, text boxes and Active objects swallow the press.
+                if hit:IsA("GuiButton") or hit:IsA("TextBox") or hit.Active then return end
+                continue
+            end
             local ancestor = hit
             while ancestor and ancestor ~= boundary do
                 if bindings[ancestor] then return bindings[ancestor], hit end
@@ -1930,11 +1946,9 @@ function Library:CreateWindow(config)
             end
             local current = Vector2.new(detachedHost.Position.X.Offset, detachedHost.Position.Y.Offset)
             local target = clampGroupPosition(groupDragTarget)
-            local nextPosition = current:Lerp(target, 1 - math.exp(-32 * dt))
-            if (nextPosition - target).Magnitude < 0.2 then
-                nextPosition = target
-                if not groupDrag then groupDragTarget = nil end
-            end
+            target = Vector2.new(math.floor(target.X + 0.5), math.floor(target.Y + 0.5))
+            local nextPosition = approachPixels(current, target, 1 - math.exp(-32 * dt))
+            if nextPosition == target and not groupDrag then groupDragTarget = nil end
             detachedHost.Position = UDim2.fromOffset(nextPosition.X, nextPosition.Y)
         end))
         local function resizeDetached()
@@ -4258,11 +4272,14 @@ function Library:CreateWindow(config)
             or dialogOpen
             or activeSlider
             or activeColorDrag
-            or UserInputService:GetFocusedTextBox()
         then
             return
         end
         if not windowDragAllowed(hit, root, input.UserInputType == Enum.UserInputType.Touch) then return end
+        -- A focused TextBox (search, a textbox control, or chat) only loses focus after this click is
+        -- delivered, so treat the click as the blur instead of refusing the drag.
+        local focused = UserInputService:GetFocusedTextBox()
+        if focused then focused:ReleaseFocus() end
         closeDropdown(true)
         dragInput = input
         dragStart = Vector2.new(input.Position.X, input.Position.Y)
@@ -4434,9 +4451,11 @@ function Library:CreateWindow(config)
             local available = viewport.AbsoluteSize
             local maxWidth = math.max(minimumWidth, math.min(1600, (available.X - topLeft.X - 16) / initialScale))
             local maxHeight = math.max(320, math.min(1000, (available.Y - topLeft.Y - 16) / initialScale))
+            -- Whole pixels only: UDim offsets are integers, so a fractional target could never be reached,
+            -- leaving the resize (and its "Resizing" lock on window dragging) running forever.
             target = Vector2.new(
-                math.clamp(initialSize.X + delta.X, minimumWidth, maxWidth),
-                math.clamp(initialSize.Y + delta.Y, 320, maxHeight)
+                math.floor(math.clamp(initialSize.X + delta.X, minimumWidth, maxWidth) + 0.5),
+                math.floor(math.clamp(initialSize.Y + delta.Y, 320, maxHeight) + 0.5)
             )
         end))
         track(game:GetService("RunService").RenderStepped:Connect(function(dt)
@@ -4446,8 +4465,8 @@ function Library:CreateWindow(config)
                 return
             end
             local current = Vector2.new(root.Size.X.Offset, root.Size.Y.Offset)
-            local nextSize = current:Lerp(target, 1 - math.exp(-32 * dt))
-            if (nextSize - target).Magnitude < 0.5 then
+            local nextSize = approachPixels(current, target, 1 - math.exp(-32 * dt))
+            if nextSize == target then
                 nextSize = target
                 if not input then
                     target = nil
