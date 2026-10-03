@@ -211,7 +211,8 @@ function Library:CreateWindow(config)
     local lightSheen = ColorSequence.new(Color3.new(1, 1, 1), Color3.fromRGB(244, 243, 248))
     -- Halo glow: concentric translucent rounded frames, densest at the element's edge and fading out.
     -- Built from frames rather than a blurred image so it stays soft at any size and needs no asset.
-    local haloAlpha = { 0.05, 0.08, 0.12, 0.17 }
+    -- More, fainter rings give a smoother falloff; together they peak at roughly 24% opacity.
+    local haloAlpha = { 0.02, 0.03, 0.04, 0.05, 0.06, 0.07 }
     local glowFactor = 1
     local function buildHalo(parent, spread, radius)
         local halo = Instance.new("Frame")
@@ -285,7 +286,7 @@ function Library:CreateWindow(config)
         return record
     end
     local function stepGlows(dt)
-        local blend = 1 - math.exp(-14 * dt)
+        local blend = 1 - math.exp(-9 * dt)
         for record in pairs(liveGlows) do
             local halo, element = record.Halo, record.Element
             if not element.Parent or not halo.Parent then
@@ -791,7 +792,7 @@ function Library:CreateWindow(config)
         glow.AnchorPoint = Vector2.new(0.5, 0.5)
         glow.Position = UDim2.fromScale(0.5, 0.5)
         glow.Size = UDim2.new(1, toastGlowSpread * 2, 1, toastGlowSpread * 2)
-        paintHalo(glowRings, Theme.Accent, 0.6)
+        paintHalo(glowRings, Theme.Accent, 0.45)
 
         local card = rounded("Frame", "Card", holder, 0, 0, 0, 0, "Background", 12)
         card.AutomaticSize = Enum.AutomaticSize.XY
@@ -2114,7 +2115,7 @@ function Library:CreateWindow(config)
             bindTheme(stroke, "Color", "Border")
             stroke.Parent = button
             local check = icon(button, "check", 2, 2, 14, "OnAccent")
-            local checkGlow = elementGlow(button, { Spread = 6, Radius = 4, Strength = 0.85, Role = "Accent", Level = 0 })
+            local checkGlow = elementGlow(button, { Spread = 7, Radius = 4, Strength = 0.6, Role = "Accent", Level = 0 })
             local control = { Value = false }
             function control:Set(value, silent)
                 self.Value = value == true
@@ -2166,7 +2167,7 @@ function Library:CreateWindow(config)
             local stroke = Instance.new("UIStroke")
             bindTheme(stroke, "Color", "Muted")
             stroke.Parent = swatch
-            elementGlow(swatch, { Spread = 6, Radius = 4, Strength = 0.75 })
+            elementGlow(swatch, { Spread = 7, Radius = 4, Strength = 0.5 })
             local picker = createColorPicker(container, swatch, options)
             persistColor(options, picker, container)
             tab.Columns[side]:GetPropertyChangedSignal("CanvasPosition"):Connect(function()
@@ -2197,7 +2198,7 @@ function Library:CreateWindow(config)
             animateButton(keyButton, "Search")
             local button = rounded("TextButton", "Switch", container, 0, 4, 34, 20, "Navigation", 10)
             button.Position = UDim2.new(1, -34, 0, 4)
-            local switchGlow = elementGlow(button, { Spread = 7, Radius = 10, Role = "Accent", Level = 0 })
+            local switchGlow = elementGlow(button, { Spread = 8, Radius = 10, Strength = 0.7, Role = "Accent", Level = 0 })
             local dot = rounded("Frame", "Dot", button, 10, 10, 14, 14, "Muted", 7)
             dot.AnchorPoint = Vector2.new(0.5, 0.5)
             local toggleRevision = 0
@@ -2234,7 +2235,7 @@ function Library:CreateWindow(config)
                 local stroke = Instance.new("UIStroke")
                 bindTheme(stroke, "Color", "Muted")
                 stroke.Parent = swatch
-                elementGlow(swatch, { Spread = 6, Radius = 4, Strength = 0.75 })
+                elementGlow(swatch, { Spread = 7, Radius = 4, Strength = 0.5 })
                 colorOptions = colorOptions or {}
                 colorOptions.Name = colorOptions.Name or ((options.Name or "Toggle") .. " color")
                 colorOptions.NoSave = colorOptions.NoSave or options.NoSave
@@ -2461,7 +2462,7 @@ function Library:CreateWindow(config)
             local trackFrame = rounded("Frame", "Track", hit, 0, 10, 0, 8, "Navigation", 4)
             trackFrame.Size = UDim2.new(1, 0, 0, 8)
             local fill = rounded("Frame", "Fill", trackFrame, 0, 0, 0, 8, "Accent", 4)
-            local fillGlow = elementGlow(fill, { Spread = 6, Radius = 4, Strength = 0.8, Role = "Accent" })
+            local fillGlow = elementGlow(fill, { Spread = 7, Radius = 4, Strength = 0.55, Role = "Accent" })
             local highlight = Instance.new("UIGradient")
             highlight.Transparency =
                 NumberSequence.new({ NumberSequenceKeypoint.new(0, 0.28), NumberSequenceKeypoint.new(1, 0) })
@@ -3472,7 +3473,7 @@ function Library:CreateWindow(config)
         tab.Glow = attachGlow(dockGlowLayer, button, {
             Spread = 10,
             Radius = 10,
-            Strength = 0.9,
+            Strength = 0.7,
             Role = "Accent",
             Level = 0,
             Factor = dockGlowFactor,
