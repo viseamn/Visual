@@ -401,6 +401,19 @@ function Library:CreateWindow(config)
     local refreshDockLayout = function() end
     local scale = Instance.new("UIScale")
     scale.Parent = root
+    -- The real screen in GUI-area coordinates. The ScreenGui keeps Roblox's safe insets, so its area starts
+    -- below the top bar; objects may still be drawn (and clicked) out to the true screen edge.
+    -- Returns the top-left (usually negative) and bottom-right corners.
+    local function screenBounds()
+        local area = viewport.AbsoluteSize
+        local camera = workspace.CurrentCamera
+        local total = camera and (camera.ViewportSize - area) or Vector2.zero
+        total = Vector2.new(math.max(0, total.X), math.max(0, total.Y))
+        local inset = game:GetService("GuiService"):GetGuiInset()
+        local top = math.clamp(inset.Y, 0, total.Y)
+        local left = math.clamp(inset.X, 0, total.X)
+        return Vector2.new(-left, -top), area + Vector2.new(total.X - left, total.Y - top)
+    end
     local function resize()
         local size = viewport.AbsoluteSize
         scale.Scale =
@@ -408,15 +421,16 @@ function Library:CreateWindow(config)
         if windowTransitioning then return end
         local position = root.Position
         local halfWidth, halfHeight = root.Size.X.Offset * scale.Scale / 2, root.Size.Y.Offset * scale.Scale / 2
+        local low, high = screenBounds()
         local x = math.clamp(
             size.X * position.X.Scale + position.X.Offset,
-            halfWidth,
-            math.max(halfWidth, size.X - halfWidth)
+            low.X + halfWidth,
+            math.max(low.X + halfWidth, high.X - halfWidth)
         )
         local y = math.clamp(
             size.Y * position.Y.Scale + position.Y.Offset,
-            halfHeight,
-            math.max(halfHeight, size.Y - halfHeight)
+            low.Y + halfHeight,
+            math.max(low.Y + halfHeight, high.Y - halfHeight)
         )
         root.Position =
             UDim2.new(position.X.Scale, x - size.X * position.X.Scale, position.Y.Scale, y - size.Y * position.Y.Scale)
@@ -763,7 +777,8 @@ function Library:CreateWindow(config)
         -- A centred stack on the same edge as the dock would sit on the bar, so push it clear.
         local lift = 0
         if position == "Bottom" and dockEdge == "Bottom" then lift = -78 end
-        if position == "Top" and dockEdge == "Top" then lift = 78 end
+        -- A top bar normally lives in Roblox's top-bar strip (above the GUI area); only lift when it can't.
+        if position == "Top" and dockEdge == "Top" and -screenBounds().Y < 40 then lift = 78 end
         toastStack.AnchorPoint = anchor
         toastStack.Position = UDim2.new(anchor.X, 0, anchor.Y, lift)
         toastStack.Size = UDim2.new(1, 0, 1, -math.abs(lift))
@@ -1771,11 +1786,11 @@ function Library:CreateWindow(config)
                 )
         end
         local function clampGroupPosition(position)
-            local available = viewport.AbsoluteSize
+            local low, high = screenBounds()
             local size = detachedHost and detachedHost.AbsoluteSize or frame.AbsoluteSize
             return Vector2.new(
-                math.clamp(position.X, 0, math.max(0, available.X - size.X)),
-                math.clamp(position.Y, 0, math.max(0, available.Y - size.Y))
+                math.clamp(position.X, low.X, math.max(low.X, high.X - size.X)),
+                math.clamp(position.Y, low.Y, math.max(low.Y, high.Y - size.Y))
             )
         end
         local function resizeGroup(immediate)
@@ -1791,16 +1806,17 @@ function Library:CreateWindow(config)
                 local maximum = math.max(1, (viewport.AbsoluteSize.Y - 16) / math.max(0.01, groupFactor()))
                 detachedHost.Size = UDim2.fromOffset(detachedWidth, math.min(height + 4, maximum))
                 local factor = groupFactor()
+                local low, high = screenBounds()
                 detachedHost.Position = UDim2.fromOffset(
                     math.clamp(
                         detachedHost.Position.X.Offset,
-                        0,
-                        math.max(0, viewport.AbsoluteSize.X - detachedWidth * factor)
+                        low.X,
+                        math.max(low.X, high.X - detachedWidth * factor)
                     ),
                     math.clamp(
                         detachedHost.Position.Y.Offset,
-                        0,
-                        math.max(0, viewport.AbsoluteSize.Y - detachedHost.Size.Y.Offset * factor)
+                        low.Y,
+                        math.max(low.Y, high.Y - detachedHost.Size.Y.Offset * factor)
                     )
                 )
             end
@@ -4066,18 +4082,26 @@ function Library:CreateWindow(config)
     -- reports, so also measure the real shortfall between the camera viewport and the GUI area. Over-hiding
     -- is harmless; under-hiding leaves the bar peeking into Roblox's top bar.
     local function dockScreenGap()
-        local topLeft, bottomRight = game:GetService("GuiService"):GetGuiInset()
-        local camera = workspace.CurrentCamera
-        local shortfall = camera and (camera.ViewportSize - viewport.AbsoluteSize) or Vector2.zero
-        if dockEdge == "Top" then return math.max(topLeft.Y, shortfall.Y) end
-        if dockEdge == "Left" then return math.max(topLeft.X, shortfall.X) end
-        if dockEdge == "Right" then return math.max(bottomRight.X, shortfall.X) end
-        return math.max(bottomRight.Y, shortfall.Y)
+        local low, high = screenBounds()
+        local area = viewport.AbsoluteSize
+        if dockEdge == "Top" then return -low.Y end
+        if dockEdge == "Left" then return -low.X end
+        if dockEdge == "Right" then return high.X - area.X end
+        return high.Y - area.Y
+    end
+    -- Resting distance of the dock from its GUI-area edge. A top bar moves up into Roblox's own top-bar
+    -- row (centred on it) when that strip is tall enough, instead of hanging below it.
+    local function dockRestInward()
+        local gap = dockScreenGap()
+        if dockEdge == "Top" and gap >= 40 then
+            return math.max(4, (gap - 64 * dockFitScale) / 2) - gap
+        end
+        return 14
     end
     local function renderDock()
         local progress = math.clamp(dockProgress, 0, 1)
         local hiddenDepth = 76 + dockScreenGap()
-        placeAtEdge(dockHost, (14 + hiddenDepth) * dockProgress - hiddenDepth)
+        placeAtEdge(dockHost, (dockRestInward() + hiddenDepth) * dockProgress - hiddenDepth)
         -- Spring overshoot can leave a sliver on screen; fully parked means invisible.
         dockHost.Visible = dockProgress > 0.002 or dockExpanded
         dockScale.Scale = dockFitScale * (0.94 + 0.06 * dockProgress)
@@ -4086,7 +4110,7 @@ function Library:CreateWindow(config)
         local reveal = dockAutoHide and (1 - progress) or 0
         dockReveal.Visible = reveal > 0.005
         dockReveal.Interactable = not dockExpanded and reveal > 0.2
-        placeAtEdge(dockReveal, 2 - 6 * progress)
+        placeAtEdge(dockReveal, 2 - dockScreenGap() - 6 * progress)
         local gripLength = (80 + 8 * revealHoverAmount) * (0.86 + 0.14 * reveal)
         grip.Size = dockVertical() and UDim2.fromOffset(4, gripLength) or UDim2.fromOffset(gripLength, 4)
         grip.BackgroundTransparency = 1 - reveal * (0.45 + 0.12 * revealHoverAmount)
@@ -4178,7 +4202,7 @@ function Library:CreateWindow(config)
         local minimumScale, hostPadding = 0.14, 12
         -- The centre of the dock, where the window shrinks into when hidden.
         local function landingPoint()
-            local inward = 14 + 32 * dockFitScale
+            local inward = dockRestInward() + 32 * dockFitScale
             local size = viewport.AbsoluteSize
             if dockEdge == "Top" then return Vector2.new(size.X / 2, inward) end
             if dockEdge == "Left" then return Vector2.new(inward, size.Y / 2) end
@@ -4318,12 +4342,12 @@ function Library:CreateWindow(config)
         )
     end
     local function clampWindow(position)
-        local available = viewport.AbsoluteSize
+        local screenLow, screenHigh = screenBounds()
         local size = Vector2.new(root.Size.X.Offset, root.Size.Y.Offset) * scale.Scale
-        local low = Vector2.new(size.X * root.AnchorPoint.X, size.Y * root.AnchorPoint.Y)
+        local low = screenLow + Vector2.new(size.X * root.AnchorPoint.X, size.Y * root.AnchorPoint.Y)
         local high = Vector2.new(
-            math.max(low.X, available.X - size.X * (1 - root.AnchorPoint.X)),
-            math.max(low.Y, available.Y - size.Y * (1 - root.AnchorPoint.Y))
+            math.max(low.X, screenHigh.X - size.X * (1 - root.AnchorPoint.X)),
+            math.max(low.Y, screenHigh.Y - size.Y * (1 - root.AnchorPoint.Y))
         )
         return Vector2.new(math.clamp(position.X, low.X, high.X), math.clamp(position.Y, low.Y, high.Y))
     end
