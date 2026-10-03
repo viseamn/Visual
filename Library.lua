@@ -3933,7 +3933,7 @@ function Library:CreateWindow(config)
     end)
     -- Taskbar-style search pill at the start of the bar, mirrored with the header search (only one of the
     -- two is shown, see applySearchStyle). A side bar has no room for a field, so there it is a round button
-    -- that slides out into a pill while typing.
+    -- that opens a small glass search card beside the bar while typing.
     local dockSearch = rounded("TextButton", "DockSearch", sidebar, 12, 14, 148, 36, "Search", 18)
     local layoutDockSearch
     do
@@ -3949,7 +3949,20 @@ function Library:CreateWindow(config)
         -- Matches the divider before the profile, so the tabs sit between two dividers.
         local divider = rounded("Frame", "Divider", dockSearch, 0, 0, 1, 32, "Text", 1)
         divider.BackgroundTransparency = 0.9
-        local expanded = false
+        -- Side-bar search card: styled like the bar itself and kept clear of it, rather than stretching the
+        -- button across the bar's edge.
+        local card = rounded("CanvasGroup", "SearchCard", dockSearch, 0, 0, 236, 48, "Background", 16)
+        card.BackgroundTransparency = 0.04
+        card.GroupTransparency = 1
+        card.Visible = false
+        card.Active = true
+        local cardRim = Instance.new("UIStroke")
+        cardRim.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+        bindTheme(cardRim, "Color", "Accent")
+        cardRim.Transparency = 1
+        cardRim.Parent = card
+        icon(card, "search", 16, 16, 16, "Accent")
+        local expanded, cardRevision = false, 0
         local box = rounded("TextBox", "Box", dockSearch, 36, 0, 0, 36, "Search", 0)
         box.Size = UDim2.new(1, -46, 1, 0)
         box.BackgroundTransparency = 1
@@ -3962,6 +3975,9 @@ function Library:CreateWindow(config)
         setUIFont(box)
         bindTheme(box, "TextColor3", "Text")
         bindTheme(box, "PlaceholderColor3", "Muted")
+        -- In the card the box covers the whole card, so a click anywhere on it keeps typing.
+        local boxPadding = Instance.new("UIPadding")
+        boxPadding.Parent = box
         local hovering = false
         local function refresh()
             local active = box:IsFocused()
@@ -3973,37 +3989,52 @@ function Library:CreateWindow(config)
         end
         layoutDockSearch = function(animate)
             local vertical = dockEdge == "Left" or dockEdge == "Right"
-            local size
             if vertical then
                 local right = dockEdge == "Right"
-                -- Grows inward from the side bar, over the screen, so it needs a solid background.
-                dockSearch.AnchorPoint = Vector2.new(right and 1 or 0, 0)
-                dockSearch.Position = UDim2.new(right and 1 or 0, right and -10 or 10, 0, 10)
-                dockSearch.BackgroundTransparency = expanded and 0 or 0.2
-                size = UDim2.fromOffset(expanded and 220 or 44, 44)
+                dockSearch.AnchorPoint = Vector2.new(0.5, 0)
+                dockSearch.Position = UDim2.new(0.5, 0, 0, 10)
+                dockSearch.Size = UDim2.fromOffset(44, 44)
                 glyph.Position = UDim2.fromOffset(14, 14)
-                box.Position = UDim2.fromOffset(40, 0)
-                box.Size = UDim2.new(1, -50, 1, 0)
                 divider.AnchorPoint = Vector2.new(0.5, 0)
-                divider.Position = UDim2.new(right and 1 or 0, right and -22 or 22, 1, 10)
+                divider.Position = UDim2.new(0.5, 0, 1, 10)
                 divider.Size = UDim2.fromOffset(32, 1)
+                -- The card sits 10px past the bar's outer edge, level with the button.
+                box.Parent = card
+                box.Position = UDim2.fromOffset(0, 0)
+                box.Size = UDim2.fromScale(1, 1)
+                boxPadding.PaddingLeft, boxPadding.PaddingRight = UDim.new(0, 42), UDim.new(0, 14)
+                card.AnchorPoint = Vector2.new(right and 1 or 0, 0.5)
+                local rest = UDim2.new(right and 0 or 1, right and -20 or 20, 0.5, 0)
+                local away = UDim2.new(right and 0 or 1, right and -12 or 12, 0.5, 0)
+                cardRevision = cardRevision + 1
+                local revision = cardRevision
+                if expanded then
+                    if not card.Visible then card.Position = away end
+                    card.Visible = true
+                    tween(card, { GroupTransparency = 0, Position = rest }, animate and 0.18 or 0)
+                    motion(cardRim, { Transparency = 0.55 }, animate and 0.18 or 0)
+                elseif card.Visible then
+                    tween(card, { GroupTransparency = 1, Position = away }, animate and 0.14 or 0)
+                    motion(cardRim, { Transparency = 1 }, animate and 0.14 or 0)
+                    task.delay(animate and 0.15 or 0, function()
+                        if cardRevision == revision and not expanded then card.Visible = false end
+                    end)
+                end
             else
                 dockSearch.AnchorPoint = Vector2.new(0, 0.5)
                 dockSearch.Position = UDim2.new(0, 12, 0.5, 0)
-                dockSearch.BackgroundTransparency = 0.2
-                size = UDim2.fromOffset(148, 36)
+                dockSearch.Size = UDim2.fromOffset(148, 36)
                 glyph.Position = UDim2.fromOffset(12, 10)
-                box.Position = UDim2.fromOffset(36, 0)
-                box.Size = UDim2.new(1, -46, 1, 0)
                 divider.AnchorPoint = Vector2.new(0, 0.5)
                 divider.Position = UDim2.new(1, 10, 0.5, 0)
                 divider.Size = UDim2.fromOffset(1, 32)
-            end
-            box.Visible = not vertical or expanded
-            if animate then
-                tween(dockSearch, { Size = size }, 0.2)
-            else
-                dockSearch.Size = size
+                box.Parent = dockSearch
+                box.Position = UDim2.fromOffset(36, 0)
+                box.Size = UDim2.new(1, -46, 1, 0)
+                boxPadding.PaddingLeft, boxPadding.PaddingRight = UDim.new(0, 0), UDim.new(0, 0)
+                cardRevision = cardRevision + 1
+                card.Visible = false
+                card.GroupTransparency = 1
             end
         end
         dockSearch.MouseEnter:Connect(function()
@@ -4025,8 +4056,10 @@ function Library:CreateWindow(config)
             end
             refresh()
         end)
-        box.FocusLost:Connect(function()
-            if expanded then
+        box.FocusLost:Connect(function(enterPressed)
+            -- A press on the round button also drops focus first; leave closing to its Activated handler,
+            -- otherwise the card would close here and reopen on release.
+            if expanded and (enterPressed or not hovering) then
                 expanded = false
                 layoutDockSearch(true)
             end
@@ -4034,18 +4067,22 @@ function Library:CreateWindow(config)
         end)
         dockSearch.Activated:Connect(function()
             if dialogOpen then return end
-            if box.Visible then
+            if box.Parent == dockSearch then
                 box:CaptureFocus()
                 return
             end
-            -- Collapsed side-bar button: open the window first (that drops focus), then slide out and type.
+            -- Side-bar button toggles the card; open the window first (that drops focus), then type.
+            if expanded then
+                expanded = false
+                box:ReleaseFocus()
+                layoutDockSearch(true)
+                return
+            end
             if not uiShown then setUIVisible(true) end
             expanded = true
-            box.Visible = true
+            layoutDockSearch(true)
             task.defer(function()
-                if not uiAlive then return end
-                box:CaptureFocus()
-                layoutDockSearch(true)
+                if uiAlive and expanded then box:CaptureFocus() end
             end)
         end)
         box:GetPropertyChangedSignal("Text"):Connect(function()
