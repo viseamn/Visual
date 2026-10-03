@@ -429,13 +429,20 @@ function Library:CreateWindow(config)
         return connection
     end
     local dragStarts = setmetatable({}, { __mode = "k" })
+    local function passesInput(object)
+        return (object:IsA("Frame") or object:IsA("ScrollingFrame"))
+            and not object.Active
+            and object.BackgroundTransparency >= 1
+    end
     local function findDragStart(objects, boundary, bindings)
-        local hit = objects[1]
-        if not hit or not hit:IsDescendantOf(boundary) then return end
-        local ancestor = hit
-        while ancestor and ancestor ~= boundary do
-            if bindings[ancestor] then return bindings[ancestor], hit end
-            ancestor = ancestor.Parent
+        for _, hit in ipairs(objects) do
+            if not hit:IsDescendantOf(boundary) then return end
+            local ancestor = hit
+            while ancestor and ancestor ~= boundary do
+                if bindings[ancestor] then return bindings[ancestor], hit end
+                ancestor = ancestor.Parent
+            end
+            if not passesInput(hit) then return end
         end
     end
     local function windowDragAllowed(hit, window, touch)
