@@ -4329,18 +4329,68 @@ function Library:CreateWindow(config)
         end
     end
     do
-        resizeHandle = rounded("TextButton", "ResizeWindow", root, 0, 0, 22, 22, "Background", 6)
-        resizeHandle.AnchorPoint = Vector2.new(1, 1)
-        resizeHandle.Position = UDim2.new(1, -3, 1, -3)
+        -- Corner grip: an arc that hugs the window's rounded corner. It is the stroked corner of a larger
+        -- rounded frame, clipped by the hit area so only the curve and short tails show; the tails fade out.
+        local gripInset = 5
+        resizeHandle = Instance.new("TextButton")
+        resizeHandle.Name = "ResizeWindow"
+        resizeHandle.Text = ""
+        resizeHandle.AutoButtonColor = false
         resizeHandle.BackgroundTransparency = 1
+        resizeHandle.AnchorPoint = Vector2.new(1, 1)
+        resizeHandle.Position = UDim2.fromScale(1, 1)
+        resizeHandle.Size = UDim2.fromOffset(30, 30)
+        resizeHandle.ClipsDescendants = true
         resizeHandle.ZIndex = 10
-        local image = icon(resizeHandle, "arrow-left-right", 5, 5, 12, "Muted")
-        image.Rotation = 45
-        addTooltip(resizeHandle, "Drag to resize the window")
+        resizeHandle.Parent = root
+        local arc = Instance.new("Frame")
+        arc.Name = "Grip"
+        arc.AnchorPoint = Vector2.new(1, 1)
+        arc.Position = UDim2.new(1, -gripInset, 1, -gripInset)
+        arc.Size = UDim2.fromOffset(64, 64)
+        arc.BackgroundTransparency = 1
+        arc.ZIndex = 10
+        arc.Parent = resizeHandle
+        local arcCorner = Instance.new("UICorner")
+        arcCorner.CornerRadius = UDim.new(0, rootCorner.CornerRadius.Offset - gripInset)
+        arcCorner.Parent = arc
+        local arcStroke = Instance.new("UIStroke")
+        arcStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+        arcStroke.Thickness = 2.5
+        arcStroke.Transparency = 0.35
+        bindTheme(arcStroke, "Color", "Muted")
+        arcStroke.Parent = arc
+        local arcFade = Instance.new("UIGradient")
+        arcFade.Rotation = 45
+        arcFade.Transparency = NumberSequence.new({
+            NumberSequenceKeypoint.new(0, 1),
+            NumberSequenceKeypoint.new(0.7, 1),
+            NumberSequenceKeypoint.new(0.88, 0),
+            NumberSequenceKeypoint.new(1, 0),
+        })
+        arcFade.Parent = arcStroke
+        local gripHovered = false
         local input, pointerStart, initialSize, initialScale, topLeft, target
+        local function refreshGrip()
+            local active = input ~= nil
+            tween(arcStroke, {
+                Color = active and "Accent" or (gripHovered and "Text" or "Muted"),
+                Transparency = (active or gripHovered) and 0 or 0.35,
+                Thickness = active and 3 or 2.5,
+            }, 0.16)
+        end
+        resizeHandle.MouseEnter:Connect(function()
+            gripHovered = true
+            refreshGrip()
+        end)
+        resizeHandle.MouseLeave:Connect(function()
+            gripHovered = false
+            refreshGrip()
+        end)
         cancelWindowResize = function()
             input, target = nil, nil
             root:SetAttribute("Resizing", false)
+            refreshGrip()
         end
         resizeHandle.InputBegan:Connect(function(event)
             if
@@ -4361,6 +4411,7 @@ function Library:CreateWindow(config)
             finishColorDrag()
             input = event
             root:SetAttribute("Resizing", true)
+            refreshGrip()
             pointerStart = Vector2.new(event.Position.X, event.Position.Y)
             initialSize = Vector2.new(root.Size.X.Offset, root.Size.Y.Offset)
             initialScale = scale.Scale
@@ -4402,7 +4453,10 @@ function Library:CreateWindow(config)
             root.Position = UDim2.fromOffset(center.X, center.Y)
         end))
         track(UserInputService.InputEnded:Connect(function(event)
-            if event == input then input = nil end
+            if event == input then
+                input = nil
+                refreshGrip()
+            end
         end))
         track(UserInputService.WindowFocusReleased:Connect(cancelWindowResize))
         track(viewport:GetPropertyChangedSignal("AbsoluteSize"):Connect(cancelWindowResize))
