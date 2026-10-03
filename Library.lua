@@ -769,33 +769,33 @@ function Library:CreateWindow(config)
             or contentText
             or "Notification"
 
+        -- The holder is sized by hand from the card. Letting it auto-size would include the glow, which
+        -- is sized from the holder, and the two would inflate each other every frame.
         local holder = Instance.new("CanvasGroup")
         holder.Name = "Notification"
-        holder.AutomaticSize = Enum.AutomaticSize.XY
         holder.BackgroundTransparency = 1
         holder.BorderSizePixel = 0
         holder.LayoutOrder = toastLayoutOrder(toastOrder)
         holder.GroupTransparency = 1
         holder:SetAttribute("PassInput", true)
         holder.Parent = toastStack
-        local holderPadding = Instance.new("UIPadding")
-        holderPadding.PaddingTop = UDim.new(0, toastGlowSpread)
-        holderPadding.PaddingBottom = UDim.new(0, toastGlowSpread)
-        holderPadding.PaddingLeft = UDim.new(0, toastGlowSpread)
-        holderPadding.PaddingRight = UDim.new(0, toastGlowSpread)
-        holderPadding.Parent = holder
         local cardScale = Instance.new("UIScale")
         cardScale.Scale = 0.94
         cardScale.Parent = holder
-        -- Scale-sized so it tracks the holder without feeding back into its automatic size.
         local glow, glowRings = buildHalo(holder, toastGlowSpread, 12)
-        glow.AnchorPoint = Vector2.new(0.5, 0.5)
-        glow.Position = UDim2.fromScale(0.5, 0.5)
-        glow.Size = UDim2.new(1, toastGlowSpread * 2, 1, toastGlowSpread * 2)
+        glow.Size = UDim2.fromScale(1, 1)
         paintHalo(glowRings, Theme.Accent, 0.45)
 
-        local card = rounded("Frame", "Card", holder, 0, 0, 0, 0, "Background", 12)
+        local card = rounded("Frame", "Card", holder, toastGlowSpread, toastGlowSpread, 0, 0, "Background", 12)
         card.AutomaticSize = Enum.AutomaticSize.XY
+        local function fitHolder()
+            local size = card.AbsoluteSize / math.max(0.01, cardScale.Scale)
+            holder.Size = UDim2.fromOffset(
+                math.ceil(size.X) + toastGlowSpread * 2,
+                math.ceil(size.Y) + toastGlowSpread * 2
+            )
+        end
+        card:GetPropertyChangedSignal("AbsoluteSize"):Connect(fitHolder)
         card.BackgroundTransparency = 0.04
         card.ZIndex = 1
         local stroke = Instance.new("UIStroke")
@@ -832,6 +832,7 @@ function Library:CreateWindow(config)
         local messageLimit = Instance.new("UISizeConstraint")
         messageLimit.MaxSize = Vector2.new(420 - 14 - 18 - 18 - 12, 100000)
         messageLimit.Parent = message
+        fitHolder()
 
         local close = Instance.new("TextButton")
         close.Name = "Dismiss"
