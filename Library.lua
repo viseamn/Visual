@@ -4059,9 +4059,22 @@ function Library:CreateWindow(config)
             object.Position = UDim2.new(1, -inward, 0.5, 0)
         end
     end
+    -- Distance from the dock's edge of the GUI area to the real screen edge. The ScreenGui respects the
+    -- GUI inset, so at the top the area starts below Roblox's top bar; a bar "hidden" only past the area
+    -- edge would still show inside that strip.
+    local function dockScreenGap()
+        local topLeft, bottomRight = game:GetService("GuiService"):GetGuiInset()
+        if dockEdge == "Top" then return topLeft.Y end
+        if dockEdge == "Left" then return topLeft.X end
+        if dockEdge == "Right" then return bottomRight.X end
+        return bottomRight.Y
+    end
     local function renderDock()
         local progress = math.clamp(dockProgress, 0, 1)
-        placeAtEdge(dockHost, 90 * dockProgress - 76)
+        local hiddenDepth = 76 + dockScreenGap()
+        placeAtEdge(dockHost, (14 + hiddenDepth) * dockProgress - hiddenDepth)
+        -- Spring overshoot can leave a sliver on screen; fully parked means invisible.
+        dockHost.Visible = dockProgress > 0.002 or dockExpanded
         dockScale.Scale = dockFitScale * (0.94 + 0.06 * dockProgress)
         dockGlass.BackgroundTransparency = (0.08 + (1 - progress) * 0.22) * glassOpacityFactor
         dockRim.Transparency = 0.92 + (1 - progress) * 0.08
@@ -4260,7 +4273,10 @@ function Library:CreateWindow(config)
             or dockEdge == "Right" and size.X - mouse.X
             or size.Y - mouse.Y
         local half = dockExpanded and (length / 2 + 12) or 56
-        local near = math.abs(along) <= half and depth >= -2 and depth <= (dockExpanded and 96 or 18)
+        -- The pointer can be past the GUI area (e.g. over Roblox's top bar) and still be at the screen edge.
+        local near = math.abs(along) <= half
+            and depth >= -(2 + dockScreenGap())
+            and depth <= (dockExpanded and 96 or 18)
         if near then dockHoverUntil = now + 0.65 end
         local expanded = near or now < dockHoverUntil
         if expanded ~= dockExpanded then showDock(expanded) end
@@ -4325,7 +4341,7 @@ function Library:CreateWindow(config)
         then
             return
         end
-        if inside(input.Position, dockHost) then return end
+        if dockHost.Visible and inside(input.Position, dockHost) then return end
         if
             windowTransitioning
             or dragInput
