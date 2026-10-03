@@ -255,12 +255,14 @@ function Library:CreateWindow(config)
     local layoutStyle = "Bottom bar"
     local uiShown = true
     local windowTransitioning = false
-    local windowMotionHost = Instance.new("Frame")
+    local windowMotionHost = Instance.new("CanvasGroup")
     windowMotionHost.Name = "WindowMotion"
+    windowMotionHost.AnchorPoint = Vector2.new(0.5, 0.5)
     windowMotionHost.Size = UDim2.fromOffset(0, 0)
     windowMotionHost.BackgroundTransparency = 1
     windowMotionHost.BorderSizePixel = 0
     windowMotionHost.ZIndex = 15
+    windowMotionHost.Visible = false
     windowMotionHost.Parent = viewport
     local windowMotionScale = Instance.new("UIScale")
     windowMotionScale.Scale = 1
@@ -3867,54 +3869,85 @@ function Library:CreateWindow(config)
         showDock(true, true)
     end
     do
+        -- Spring-driven open/close: progress 0 = tucked into the dock, 1 = resting at home.
+        -- Reversing mid-flight keeps the current velocity, so rapid toggles never snap.
         local home, savedPosition
-        local revision = 0
+        local progress, velocity, target = 1, 0, 1
+        local minimumScale, hostPadding = 0.14, 12
         local function landingPoint()
             local center = 14 + 32 * dockFitScale
             return Vector2.new(viewport.AbsoluteSize.X / 2, viewport.AbsoluteSize.Y - center)
         end
+        local function smoothstep(value)
+            value = math.clamp(value, 0, 1)
+            return value * value * (3 - 2 * value)
+        end
+        local function render()
+            local clamped = math.clamp(progress, 0, 1)
+            -- Position leads the scale so the window looks like it lifts out of the dock.
+            local travel = 1 - (1 - clamped) ^ 3
+            local point = landingPoint():Lerp(home, travel)
+            local size = Vector2.new(root.Size.X.Offset, root.Size.Y.Offset) * scale.Scale
+            windowMotionHost.Size = UDim2.fromOffset(size.X + hostPadding * 2, size.Y + hostPadding * 2)
+            windowMotionHost.Position = UDim2.fromOffset(point.X, point.Y)
+            windowMotionScale.Scale = math.max(0.01, minimumScale + (1 - minimumScale) * progress)
+            windowMotionHost.GroupTransparency = 1 - smoothstep(clamped / 0.6)
+        end
         finishUIVisibility = function()
-            revision = revision + 1
             if windowTransitioning then
-                motion(windowMotionHost, { Position = windowMotionHost.Position }, 0, true)
-                motion(windowMotionScale, { Scale = 1 }, 0, true)
                 root.Parent = viewport
                 root.Position = savedPosition
+                windowMotionScale.Scale = 1
+                windowMotionHost.GroupTransparency = 0
+                windowMotionHost.Visible = false
                 windowTransitioning = false
                 home, savedPosition = nil, nil
             end
+            progress, velocity, target = uiShown and 1 or 0, 0, uiShown and 1 or 0
             root.Visible = uiShown
             resize()
         end
         animateUIVisibility = function(visible)
-            revision = revision + 1
-            local currentRevision = revision
             if not windowTransitioning then
                 savedPosition = root.Position
                 home = Vector2.new(
                     root.Position.X.Scale * viewport.AbsoluteSize.X + root.Position.X.Offset,
                     root.Position.Y.Scale * viewport.AbsoluteSize.Y + root.Position.Y.Offset
                 )
-                local dockPoint = landingPoint()
-                windowMotionHost.Position =
-                    UDim2.fromOffset(visible and dockPoint.X or home.X, visible and dockPoint.Y or home.Y)
-                windowMotionScale.Scale = visible and 0.18 or 1
+                progress, velocity = visible and 0 or 1, 0
                 windowTransitioning = true
                 root.Parent = windowMotionHost
-                root.Position = UDim2.fromOffset(0, 0)
+                root.Position = UDim2.fromScale(0.5, 0.5)
+                windowMotionHost.Visible = true
             end
+            target = visible and 1 or 0
             root.Visible = true
-            local destination = visible and home or landingPoint()
-            motion(windowMotionHost, { Position = UDim2.fromOffset(destination.X, destination.Y) }, 0.28)
-            motion(windowMotionScale, { Scale = visible and 1 or 0.18 }, 0.28)
             dockHoverUntil = os.clock() + 1.2
             showDock(true)
-            task.delay(animationDuration(0.28), function()
-                if uiAlive and revision == currentRevision then finishUIVisibility() end
-            end)
+            render()
         end
+        track(game:GetService("RunService").RenderStepped:Connect(function(dt)
+            if not windowTransitioning then return end
+            dt = math.min(dt, 1 / 30)
+            -- Opening settles with a slight overshoot; closing is near-critically damped and quicker.
+            local omega, damping = 17, 0.72
+            if target == 0 then omega, damping = 22, 0.95 end
+            local frequency = omega * math.sqrt(1 - damping * damping)
+            local offset = progress - target
+            local coefficient = (velocity + damping * omega * offset) / frequency
+            local decay = math.exp(-damping * omega * dt)
+            local cosine, sine = math.cos(frequency * dt), math.sin(frequency * dt)
+            local wave = offset * cosine + coefficient * sine
+            progress = target + decay * wave
+            velocity = decay * (-damping * omega * wave + frequency * (-offset * sine + coefficient * cosine))
+            local settled = math.abs(progress - target) < 0.002 and math.abs(velocity) < 0.02
+            if settled or (target == 0 and progress < 0.015) then
+                finishUIVisibility()
+                return
+            end
+            render()
+        end))
         track(viewport:GetPropertyChangedSignal("AbsoluteSize"):Connect(finishUIVisibility))
-        track(screen.Destroying:Connect(function() revision = revision + 1 end))
     end
     local function setDockAutoHide(value)
         dockAutoHide = value == true
