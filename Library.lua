@@ -4329,43 +4329,44 @@ function Library:CreateWindow(config)
         end
     end
     do
-        -- Corner grip: an arc that hugs the window's rounded corner. It is the stroked corner of a larger
-        -- rounded frame, clipped by the hit area so only the curve and short tails show; the tails fade out.
-        local gripInset = 5
+        -- Corner grip: an arc floating just outside the window's rounded corner, concentric with it.
+        -- It is the stroked corner of a larger rounded frame whose corner sits gripGap px beyond the
+        -- window's; the hit area clips it so only the curve shows, and a gradient fades the tails.
+        local gripGap, gripMargin = 5, 6
         resizeHandle = Instance.new("TextButton")
         resizeHandle.Name = "ResizeWindow"
         resizeHandle.Text = ""
         resizeHandle.AutoButtonColor = false
         resizeHandle.BackgroundTransparency = 1
         resizeHandle.AnchorPoint = Vector2.new(1, 1)
-        resizeHandle.Position = UDim2.fromScale(1, 1)
-        resizeHandle.Size = UDim2.fromOffset(30, 30)
+        resizeHandle.Position = UDim2.new(1, gripGap + gripMargin, 1, gripGap + gripMargin)
+        resizeHandle.Size = UDim2.fromOffset(36, 36)
         resizeHandle.ClipsDescendants = true
         resizeHandle.ZIndex = 10
         resizeHandle.Parent = root
         local arc = Instance.new("Frame")
         arc.Name = "Grip"
         arc.AnchorPoint = Vector2.new(1, 1)
-        arc.Position = UDim2.new(1, -gripInset, 1, -gripInset)
+        arc.Position = UDim2.new(1, -gripMargin, 1, -gripMargin)
         arc.Size = UDim2.fromOffset(64, 64)
         arc.BackgroundTransparency = 1
         arc.ZIndex = 10
         arc.Parent = resizeHandle
         local arcCorner = Instance.new("UICorner")
-        arcCorner.CornerRadius = UDim.new(0, rootCorner.CornerRadius.Offset - gripInset)
+        arcCorner.CornerRadius = UDim.new(0, rootCorner.CornerRadius.Offset + gripGap)
         arcCorner.Parent = arc
         local arcStroke = Instance.new("UIStroke")
         arcStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
-        arcStroke.Thickness = 2.5
-        arcStroke.Transparency = 0.35
-        bindTheme(arcStroke, "Color", "Muted")
+        arcStroke.Thickness = 4
+        arcStroke.Transparency = 0.45
+        bindTheme(arcStroke, "Color", "Text")
         arcStroke.Parent = arc
         local arcFade = Instance.new("UIGradient")
         arcFade.Rotation = 45
         arcFade.Transparency = NumberSequence.new({
             NumberSequenceKeypoint.new(0, 1),
-            NumberSequenceKeypoint.new(0.7, 1),
-            NumberSequenceKeypoint.new(0.88, 0),
+            NumberSequenceKeypoint.new(0.74, 1),
+            NumberSequenceKeypoint.new(0.84, 0),
             NumberSequenceKeypoint.new(1, 0),
         })
         arcFade.Parent = arcStroke
@@ -4374,9 +4375,9 @@ function Library:CreateWindow(config)
         local function refreshGrip()
             local active = input ~= nil
             tween(arcStroke, {
-                Color = active and "Accent" or (gripHovered and "Text" or "Muted"),
-                Transparency = (active or gripHovered) and 0 or 0.35,
-                Thickness = active and 3 or 2.5,
+                Color = active and "Accent" or "Text",
+                Transparency = active and 0.05 or (gripHovered and 0.2 or 0.45),
+                Thickness = active and 4.5 or 4,
             }, 0.16)
         end
         resizeHandle.MouseEnter:Connect(function()
