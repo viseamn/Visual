@@ -4062,12 +4062,17 @@ function Library:CreateWindow(config)
     -- Distance from the dock's edge of the GUI area to the real screen edge. The ScreenGui respects the
     -- GUI inset, so at the top the area starts below Roblox's top bar; a bar "hidden" only past the area
     -- edge would still show inside that strip.
+    -- GetGuiInset alone is not enough: the default ScreenInsets (CoreUISafeInsets) can trim more than it
+    -- reports, so also measure the real shortfall between the camera viewport and the GUI area. Over-hiding
+    -- is harmless; under-hiding leaves the bar peeking into Roblox's top bar.
     local function dockScreenGap()
         local topLeft, bottomRight = game:GetService("GuiService"):GetGuiInset()
-        if dockEdge == "Top" then return topLeft.Y end
-        if dockEdge == "Left" then return topLeft.X end
-        if dockEdge == "Right" then return bottomRight.X end
-        return bottomRight.Y
+        local camera = workspace.CurrentCamera
+        local shortfall = camera and (camera.ViewportSize - viewport.AbsoluteSize) or Vector2.zero
+        if dockEdge == "Top" then return math.max(topLeft.Y, shortfall.Y) end
+        if dockEdge == "Left" then return math.max(topLeft.X, shortfall.X) end
+        if dockEdge == "Right" then return math.max(bottomRight.X, shortfall.X) end
+        return math.max(bottomRight.Y, shortfall.Y)
     end
     local function renderDock()
         local progress = math.clamp(dockProgress, 0, 1)
