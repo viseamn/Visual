@@ -1090,19 +1090,18 @@ function Library:CreateWindow(config)
         local picker = { Revision = 0, Trigger = swatch }
         local hue, saturation, brightness, opacity = 0, 1, 1, 1
         local alphaEnabled = options.Alpha ~= false
-        local pickerWidth, pickerHeight = 204, 258
-        local wheelSize = 184
+        local padding, wheelSize = 12, 180
         local center = wheelSize / 2
-        local hueRadius, hueThickness = 84, 9
-        local arcRadius, arcThickness = 69, 5
-        local alphaRadius, alphaThickness = 56, 5
-        -- Arcs are { start angle, signed sweep } in degrees, counter-clockwise from the right.
-        -- Saturation climbs the left side, brightness climbs the right, opacity wraps the inside.
-        local saturationArc = { 235, -110 }
-        local brightnessArc = { -55, 110 }
-        local alphaArc = { 240, -300 }
+        local hueRadius, hueThickness = 82, 9
+        local squareSize = 96
+        local pickerWidth = wheelSize + padding * 2
+        local alphaY = padding + wheelSize + 10
+        local hexY = alphaY + (alphaEnabled and 24 or 0)
+        local fieldsY = hexY + 34
+        local pickerHeight = fieldsY + 26 + padding
+        -- Styled like the dropdown menu so the popup reads as part of the same UI.
         local panel =
-            rounded("CanvasGroup", "ColorPicker", dropdownOverlay, 0, 0, pickerWidth, pickerHeight, "Background", 12)
+            rounded("CanvasGroup", "ColorPicker", dropdownOverlay, 0, 0, pickerWidth, pickerHeight, "Card", 9)
         panel.ZIndex = 2
         panel.Visible = false
         picker.Options = panel
@@ -1110,73 +1109,41 @@ function Library:CreateWindow(config)
         panelScale.Parent = panel
         local border = Instance.new("UIStroke")
         bindTheme(border, "Color", "Border")
-        border.Transparency = 0.65
+        border.Transparency = 0.2
         border.Parent = panel
 
-        local readouts = {}
-        local readoutNames = alphaEnabled and { "S", "A", "B" } or { "S", "B" }
-        local readoutWidth = (pickerWidth - 20) / #readoutNames
-        for index, name in ipairs(readoutNames) do
-            local text = label(panel, "", 11)
-            text.Name = name .. "Readout"
-            bindTheme(text, "TextColor3", "Muted")
-            text.TextXAlignment = Enum.TextXAlignment.Center
-            text.Position = UDim2.fromOffset(10 + (index - 1) * readoutWidth, 8)
-            text.Size = UDim2.fromOffset(readoutWidth, 16)
-            readouts[name] = text
-        end
-
-        local wheel = rounded("TextButton", "Wheel", panel, 10, 28, wheelSize, wheelSize, "Background", 0)
+        local wheel = rounded("TextButton", "Wheel", panel, padding, padding, wheelSize, wheelSize, "Card", 0)
         wheel.BackgroundTransparency = 1
         local rings = Instance.new("Frame")
-        rings.Name = "Rings"
+        rings.Name = "Ring"
         rings.Size = UDim2.fromScale(1, 1)
         rings.BackgroundTransparency = 1
         rings.Parent = wheel
-
         local function polar(angle, radius)
             local radians = math.rad(angle)
             return UDim2.fromOffset(center + radius * math.cos(radians), center - radius * math.sin(radians))
         end
-        local function arcAngle(arc, t) return arc[1] + arc[2] * t end
-        local function arcValue(arc, angle)
-            local span = math.abs(arc[2])
-            local delta = ((angle - arc[1]) * (arc[2] < 0 and -1 or 1)) % 360
-            if delta <= span then return delta / span end
-            return (delta - span) < (360 - delta) and 1 or 0
-        end
-        -- Roblox has no arc primitive or conic gradient, and rotated frames render without
-        -- anti-aliasing. Rings are therefore a dense chain of overlapping round dots: corners are
-        -- anti-aliased, edges stay smooth (scallop < 0.2px at 2px spacing) and arc ends come out round.
-        local function buildArc(name, arc, radius, thickness)
-            local segments = {}
-            local closed = math.abs(arc[2]) >= 360
-            local count = math.max(2, math.ceil(radius * math.rad(math.abs(arc[2])) / 2))
-            for index = 0, closed and count - 1 or count do
-                local t = index / count
-                local dot = Instance.new("Frame")
-                dot.Name = name
-                dot.BorderSizePixel = 0
-                dot.AnchorPoint = Vector2.new(0.5, 0.5)
-                dot.Size = UDim2.fromOffset(thickness, thickness)
-                dot.Position = polar(arcAngle(arc, t), radius)
-                local corner = Instance.new("UICorner")
-                corner.CornerRadius = UDim.new(0.5, 0)
-                corner.Parent = dot
-                dot.Parent = rings
-                table.insert(segments, { Frame = dot, T = t })
-            end
-            return segments
-        end
 
-        local function makeThumb(name, size)
-            local knob = rounded("Frame", name, wheel, 0, 0, size, size, Color3.new(1, 1, 1), size / 2)
+        -- Saturation/brightness square inside the ring: always visible, even for near-black colours.
+        local square = rounded("Frame", "SaturationValue", wheel, 0, 0, squareSize, squareSize, Color3.new(1, 1, 1), 6)
+        square.AnchorPoint = Vector2.new(0.5, 0.5)
+        square.Position = UDim2.fromOffset(center, center)
+        local saturationGradient = Instance.new("UIGradient")
+        saturationGradient.Parent = square
+        local shade = rounded("Frame", "ValueShade", square, 0, 0, 0, 0, Color3.new(0, 0, 0), 6)
+        shade.Size = UDim2.fromScale(1, 1)
+        local shadeGradient = Instance.new("UIGradient")
+        shadeGradient.Rotation = 90
+        shadeGradient.Transparency = NumberSequence.new(1, 0)
+        shadeGradient.Parent = shade
+
+        local function makeThumb(parent, name, size)
+            local knob = rounded("Frame", name, parent, 0, 0, size, size, Color3.new(1, 1, 1), size / 2)
             knob.AnchorPoint = Vector2.new(0.5, 0.5)
             knob.ZIndex = 4
             local outline = Instance.new("UIStroke")
-            bindTheme(outline, "Color", "Background")
-            outline.Thickness = 1
-            outline.Transparency = 0.2
+            outline.Color = Color3.new(0, 0, 0)
+            outline.Transparency = 0.55
             outline.Parent = knob
             local core = rounded("Frame", "Color", knob, 3, 3, size - 6, size - 6, Color3.new(1, 0, 0), (size - 6) / 2)
             core.ZIndex = 5
@@ -1184,58 +1151,72 @@ function Library:CreateWindow(config)
             thumbScale.Parent = knob
             return knob, core, thumbScale
         end
-        local hueKnob, hueCore, hueScale = makeThumb("HueKnob", 16)
-        local saturationKnob, saturationCore, saturationScale = makeThumb("SaturationKnob", 12)
-        local brightnessKnob, brightnessCore, brightnessScale = makeThumb("BrightnessKnob", 12)
-        local alphaKnob, alphaCore, alphaScale = makeThumb("OpacityKnob", 12)
-        alphaKnob.Visible = alphaEnabled
+        local hueKnob, hueCore, hueScale = makeThumb(wheel, "HueKnob", 16)
+        local marker, markerCore, markerScale = makeThumb(square, "Selection", 14)
 
-        local preview = rounded("Frame", "Preview", wheel, 0, 0, 38, 38, Color3.new(1, 1, 1), 19)
-        preview.AnchorPoint = Vector2.new(0.5, 0.5)
-        preview.Position = UDim2.fromOffset(center, center - 10)
-        preview.ZIndex = 3
+        -- Opacity uses the same track/fill/knob language as the library's sliders.
+        local alphaHit = rounded("TextButton", "Opacity", panel, padding, alphaY, wheelSize, 16, "Card", 0)
+        alphaHit.BackgroundTransparency = 1
+        alphaHit.Visible = alphaEnabled
+        local alphaTrack = rounded("Frame", "Track", alphaHit, 0, 4, wheelSize, 8, "Navigation", 4)
+        local alphaFill = rounded("Frame", "Fill", alphaTrack, 0, 0, 0, 0, Color3.new(1, 1, 1), 4)
+        alphaFill.Size = UDim2.fromScale(1, 1)
+        local alphaGradient = Instance.new("UIGradient")
+        alphaGradient.Transparency = NumberSequence.new(1, 0)
+        alphaGradient.Parent = alphaFill
+        local alphaKnob = rounded("Frame", "Knob", alphaTrack, 0, 4, 16, 12, "Text", 6)
+        alphaKnob.AnchorPoint = Vector2.new(0.5, 0.5)
+        alphaKnob.ZIndex = 2
+        local alphaScale = Instance.new("UIScale")
+        alphaScale.Parent = alphaKnob
+
+        local preview = rounded("Frame", "Preview", panel, padding, hexY, 26, 26, Color3.new(1, 1, 1), 6)
         local previewStroke = Instance.new("UIStroke")
         bindTheme(previewStroke, "Color", "Border")
         previewStroke.Parent = preview
+        local hexContainer = rounded("Frame", "Hex", panel, padding + 32, hexY, wheelSize - 32, 26, "Search", 6)
         local hexInput = Instance.new("TextBox")
-        hexInput.Name = "Hex"
+        hexInput.Name = "HexInput"
         hexInput.BackgroundTransparency = 1
-        hexInput.AnchorPoint = Vector2.new(0.5, 0.5)
-        hexInput.Position = UDim2.fromOffset(center - 8, center + 22)
-        hexInput.Size = UDim2.fromOffset(62, 16)
-        hexInput.ZIndex = 3
+        hexInput.Position = UDim2.fromOffset(8, 0)
+        hexInput.Size = UDim2.new(1, -36, 1, 0)
         setUIFont(hexInput)
         hexInput.TextSize = 12
         bindTheme(hexInput, "TextColor3", "Text")
-        hexInput.TextXAlignment = Enum.TextXAlignment.Center
+        hexInput.TextXAlignment = Enum.TextXAlignment.Left
         hexInput.ClearTextOnFocus = false
-        hexInput.Parent = wheel
-        local copyButton = rounded("TextButton", "CopyHex", wheel, 0, 0, 18, 18, "Background", 5)
-        copyButton.AnchorPoint = Vector2.new(0.5, 0.5)
-        copyButton.Position = UDim2.fromOffset(center + 30, center + 22)
-        copyButton.ZIndex = 3
-        local copyIcon = icon(copyButton, "copy", 3, 3, 12, "Muted")
-        copyIcon.ZIndex = 4
-        animateButton(copyButton, "Background")
+        hexInput.Parent = hexContainer
+        local copyButton = rounded("TextButton", "CopyHex", hexContainer, 0, 3, 22, 20, "Search", 4)
+        copyButton.Position = UDim2.new(1, -25, 0, 3)
+        local copyIcon = icon(copyButton, "copy", 4, 3, 14, "Muted")
+        animateButton(copyButton, "Search")
 
         local fieldNames = alphaEnabled and { "R", "G", "B", "A" } or { "R", "G", "B" }
         local fields = {}
         local fieldGap = 6
-        local fieldWidth = (pickerWidth - 20 - fieldGap * (#fieldNames - 1)) / #fieldNames
+        local fieldWidth = (wheelSize - fieldGap * (#fieldNames - 1)) / #fieldNames
         for index, name in ipairs(fieldNames) do
-            local box =
-                rounded("TextBox", name, panel, 10 + (index - 1) * (fieldWidth + fieldGap), 220, fieldWidth, 28, "Search", 6)
-            box.Text = ""
+            local container =
+                rounded("Frame", name, panel, padding + (index - 1) * (fieldWidth + fieldGap), fieldsY, fieldWidth, 26, "Search", 6)
+            local caption = label(container, name, 11)
+            bindTheme(caption, "TextColor3", "Muted")
+            caption.Position = UDim2.fromOffset(7, 0)
+            caption.Size = UDim2.new(0, 10, 1, 0)
+            local box = Instance.new("TextBox")
+            box.Name = "Value"
+            box.BackgroundTransparency = 1
+            box.Position = UDim2.fromOffset(16, 0)
+            box.Size = UDim2.new(1, -22, 1, 0)
             box.ClearTextOnFocus = false
             setUIFont(box)
             box.TextSize = 12
             bindTheme(box, "TextColor3", "Text")
-            box.TextXAlignment = Enum.TextXAlignment.Center
+            box.TextXAlignment = Enum.TextXAlignment.Right
+            box.Parent = container
             fields[name] = box
         end
 
-        local thumbScales =
-            { Hue = hueScale, Saturation = saturationScale, Brightness = brightnessScale, Opacity = alphaScale }
+        local thumbScales = { Hue = hueScale, Square = markerScale, Opacity = alphaScale }
         local hoverPart
         local feedbackAnimations = {}
         local function feedback()
@@ -1243,61 +1224,48 @@ function Library:CreateWindow(config)
                 if feedbackAnimations[name] then feedbackAnimations[name]:Cancel() end
                 local pressed = activeColorDrag and activeColorDrag.Picker == picker and activeColorDrag.Part == name
                 feedbackAnimations[name] =
-                    tween(item, { Scale = pressed and 1.25 or (hoverPart == name and 1.12 or 1) }, 0.12)
+                    tween(item, { Scale = pressed and 1.2 or (hoverPart == name and 1.1 or 1) }, 0.12)
             end
         end
         local function wheelPoint(position)
             local factor = math.max(0.01, wheel.AbsoluteSize.X / wheelSize)
             local origin = wheel.AbsolutePosition + wheel.AbsoluteSize / 2
-            local dx, dy = (position.X - origin.X) / factor, (origin.Y - position.Y) / factor
-            return math.deg(math.atan2(dy, dx)) % 360, math.sqrt(dx * dx + dy * dy), dx
+            return (position.X - origin.X) / factor, (position.Y - origin.Y) / factor
         end
-        local hueEdge = (hueRadius + arcRadius) / 2
-        local alphaEdge = alphaEnabled and (arcRadius + alphaRadius) / 2 or alphaRadius - 10
         local function partAt(position)
-            local _, radius, dx = wheelPoint(position)
-            if radius >= hueEdge and radius <= hueRadius + 14 then return "Hue" end
-            if radius >= alphaEdge and radius < hueEdge then return dx < 0 and "Saturation" or "Brightness" end
-            if alphaEnabled and radius >= alphaRadius - 10 and radius < alphaEdge then return "Opacity" end
+            local dx, dy = wheelPoint(position)
+            local half = squareSize / 2 + 4
+            if math.abs(dx) <= half and math.abs(dy) <= half then return "Square" end
+            local radius = math.sqrt(dx * dx + dy * dy)
+            if radius >= hueRadius - 16 and radius <= hueRadius + 14 then return "Hue" end
         end
-        wheel.MouseMoved:Connect(function()
-            local mouse = UserInputService:GetMouseLocation() - game:GetService("GuiService"):GetGuiInset()
-            local part = partAt(mouse)
-            if part ~= hoverPart then
-                hoverPart = part
-                feedback()
-            end
-        end)
-        wheel.MouseLeave:Connect(function()
-            hoverPart = nil
+        local function setHover(part)
+            if part == hoverPart then return end
+            hoverPart = part
             feedback()
-        end)
-
-        local saturationSegments, brightnessSegments, alphaSegments = {}, {}, {}
-        local built = false
-        local function paintArcs(color)
-            for _, item in ipairs(saturationSegments) do
-                item.Frame.BackgroundColor3 = Color3.fromHSV(hue, item.T, brightness)
-            end
-            for _, item in ipairs(brightnessSegments) do
-                item.Frame.BackgroundColor3 = Color3.fromHSV(hue, saturation, item.T)
-            end
-            -- Opacity is simulated by blending toward the panel colour, so overlapping dots never stack.
-            for _, item in ipairs(alphaSegments) do
-                item.Frame.BackgroundColor3 = Theme.Background:Lerp(color, 0.1 + 0.9 * item.T)
-            end
         end
-        -- Segments are built on first open so pickers that are never opened stay cheap.
+        local function mouseLocation()
+            return UserInputService:GetMouseLocation() - game:GetService("GuiService"):GetGuiInset()
+        end
+        wheel.MouseMoved:Connect(function() setHover(partAt(mouseLocation())) end)
+        wheel.MouseLeave:Connect(function() setHover(nil) end)
+        alphaHit.MouseEnter:Connect(function() setHover("Opacity") end)
+        alphaHit.MouseLeave:Connect(function() setHover(nil) end)
+
+        -- Roblox has no conic gradient and rotated frames render without anti-aliasing, so the
+        -- hue ring is a dense chain of overlapping round dots (anti-aliased corners, smooth edge).
+        local built = false
         local function build()
             if built then return end
             built = true
-            for _, item in ipairs(buildArc("Hue", { 0, 360 }, hueRadius, hueThickness)) do
-                item.Frame.BackgroundColor3 = Color3.fromHSV(item.T % 1, 1, 1)
+            local count = math.ceil(2 * math.pi * hueRadius / 2)
+            for index = 0, count - 1 do
+                local t = index / count
+                local dot = rounded("Frame", "Hue", rings, 0, 0, hueThickness, hueThickness, Color3.fromHSV(t, 1, 1), 0)
+                dot.AnchorPoint = Vector2.new(0.5, 0.5)
+                dot.Position = polar(t * 360, hueRadius)
+                dot:FindFirstChildOfClass("UICorner").CornerRadius = UDim.new(0.5, 0)
             end
-            saturationSegments = buildArc("Saturation", saturationArc, arcRadius, arcThickness)
-            brightnessSegments = buildArc("Brightness", brightnessArc, arcRadius, arcThickness)
-            if alphaEnabled then alphaSegments = buildArc("Opacity", alphaArc, alphaRadius, alphaThickness) end
-            paintArcs(picker.Value)
         end
 
         local hexValue = ""
@@ -1307,28 +1275,25 @@ function Library:CreateWindow(config)
             picker.Transparency = 1 - opacity
             swatch.BackgroundColor3 = color
             swatch.BackgroundTransparency = 0
+            local pure = Color3.fromHSV(hue, 1, 1)
             hueKnob.Position = polar(hue * 360, hueRadius)
-            hueCore.BackgroundColor3 = Color3.fromHSV(hue, 1, 1)
-            saturationKnob.Position = polar(arcAngle(saturationArc, saturation), arcRadius)
-            saturationCore.BackgroundColor3 = color
-            brightnessKnob.Position = polar(arcAngle(brightnessArc, brightness), arcRadius)
-            brightnessCore.BackgroundColor3 = color
-            alphaKnob.Position = polar(arcAngle(alphaArc, opacity), alphaRadius)
-            alphaCore.BackgroundColor3 = color
+            hueCore.BackgroundColor3 = pure
+            saturationGradient.Color = ColorSequence.new(Color3.new(1, 1, 1), pure)
+            marker.Position = UDim2.fromScale(saturation, 1 - brightness)
+            markerCore.BackgroundColor3 = color
+            alphaFill.BackgroundColor3 = color
+            alphaKnob.Position = UDim2.new(opacity, 0, 0, 4)
             preview.BackgroundColor3 = color
             preview.BackgroundTransparency = (1 - opacity) * 0.85
-            paintArcs(color)
-            readouts.S.Text = string.format("S: %.2f", saturation)
-            readouts.B.Text = string.format("B: %.2f", brightness)
-            if readouts.A then readouts.A.Text = string.format("A: %.2f", opacity) end
             local channels = {
                 R = math.floor(color.R * 255 + 0.5),
                 G = math.floor(color.G * 255 + 0.5),
                 B = math.floor(color.B * 255 + 0.5),
             }
-            local alpha = math.floor(opacity * 255 + 0.5)
             hexValue = string.format("%02X%02X%02X", channels.R, channels.G, channels.B)
-            if alphaEnabled then hexValue = hexValue .. string.format("%02X", alpha) end
+            if alphaEnabled and opacity < 1 then
+                hexValue = hexValue .. string.format("%02X", math.floor(opacity * 255 + 0.5))
+            end
             if not hexInput:IsFocused() then hexInput.Text = "#" .. hexValue end
             for name, box in pairs(fields) do
                 if not box:IsFocused() then
@@ -1357,17 +1322,27 @@ function Library:CreateWindow(config)
                 update(input.Position)
             end
         end
-        local updaters = {
-            Hue = function(position) hue = (wheelPoint(position) / 360) % 1 end,
-            Saturation = function(position) saturation = arcValue(saturationArc, (wheelPoint(position))) end,
-            Brightness = function(position) brightness = arcValue(brightnessArc, (wheelPoint(position))) end,
-            Opacity = function(position) opacity = arcValue(alphaArc, (wheelPoint(position))) end,
-        }
         wheel.InputBegan:Connect(function(input)
             local part = partAt(input.Position)
             if not part then return end
             beginPick(input, part, function(position)
-                updaters[part](position)
+                local dx, dy = wheelPoint(position)
+                if part == "Hue" then
+                    hue = (math.deg(math.atan2(-dy, dx)) / 360) % 1
+                else
+                    saturation = math.clamp(dx / squareSize + 0.5, 0, 1)
+                    brightness = 1 - math.clamp(dy / squareSize + 0.5, 0, 1)
+                end
+                refresh(true)
+            end)
+        end)
+        alphaHit.InputBegan:Connect(function(input)
+            beginPick(input, "Opacity", function(position)
+                opacity = math.clamp(
+                    (position.X - alphaTrack.AbsolutePosition.X) / math.max(1, alphaTrack.AbsoluteSize.X),
+                    0,
+                    1
+                )
                 refresh(true)
             end)
         end)
