@@ -209,36 +209,49 @@ function Library:CreateWindow(config)
     local glassOpacityFactor = 1
     local darkSheen = ColorSequence.new(Color3.new(1, 1, 1), Color3.fromRGB(220, 213, 239))
     local lightSheen = ColorSequence.new(Color3.new(1, 1, 1), Color3.fromRGB(244, 243, 248))
-    -- Soft accent halo: a 9-slice blurred image placed behind a surface (never inside it, since
-    -- children always draw over their parent). Light themes get a fainter halo so it reads as glow, not stain.
-    local glowLayers = setmetatable({}, { __mode = "k" })
+    -- Halo glow: concentric translucent rounded frames, densest at the element's edge and fading out.
+    -- Built from frames rather than a blurred image so it stays soft at any size and needs no asset.
+    local haloAlpha = { 0.05, 0.08, 0.12, 0.17 }
     local glowFactor = 1
-    local function setGlowStrength(glow, strength)
-        glowLayers[glow] = strength
-        glow.ImageTransparency = 1 - math.clamp(strength * glowFactor, 0, 1)
+    local function buildHalo(parent, spread, radius)
+        local halo = Instance.new("Frame")
+        halo.Name = "Glow"
+        halo.BackgroundTransparency = 1
+        halo.BorderSizePixel = 0
+        halo.ZIndex = 0
+        halo:SetAttribute("PassInput", true)
+        local layers = {}
+        for index = 1, #haloAlpha do
+            local inset = (index - 1) * spread / #haloAlpha
+            local ring = Instance.new("Frame")
+            ring.Name = "Ring"
+            ring.AnchorPoint = Vector2.new(0.5, 0.5)
+            ring.Position = UDim2.fromScale(0.5, 0.5)
+            ring.Size = UDim2.new(1, -inset * 2, 1, -inset * 2)
+            ring.BackgroundTransparency = 1
+            ring.BorderSizePixel = 0
+            ring.ZIndex = 0
+            ring:SetAttribute("PassInput", true)
+            local corner = Instance.new("UICorner")
+            corner.CornerRadius = UDim.new(0, radius + spread - inset)
+            corner.Parent = ring
+            ring.Parent = halo
+            layers[index] = ring
+        end
+        halo.Parent = parent
+        return halo, layers
     end
-    local function createGlow(parent, spread, strength)
-        local glow = Instance.new("ImageLabel")
-        glow.Name = "Glow"
-        glow.BackgroundTransparency = 1
-        glow.Image = "rbxassetid://5028857084"
-        glow.ScaleType = Enum.ScaleType.Slice
-        glow.SliceCenter = Rect.new(24, 24, 276, 276)
-        glow.SliceScale = spread / 24
-        glow.AnchorPoint = Vector2.new(0.5, 0.5)
-        glow.Position = UDim2.fromScale(0.5, 0.5)
-        glow.Size = UDim2.new(1, spread * 2, 1, spread * 2)
-        glow.ZIndex = 0
-        glow:SetAttribute("PassInput", true)
-        bindTheme(glow, "ImageColor3", "Accent")
-        setGlowStrength(glow, strength)
-        glow.Parent = parent
-        return glow
+    local function paintHalo(layers, color, strength)
+        strength = math.clamp(strength * glowFactor, 0, 1)
+        for index, ring in ipairs(layers) do
+            ring.BackgroundColor3 = color
+            ring.BackgroundTransparency = 1 - haloAlpha[index] * strength
+        end
     end
     local function refreshGlass()
         local light = luminance(Theme.Background) > 0.5
         glassOpacityFactor = light and 0.25 or 1
-        glowFactor = light and 0.55 or 1
+        glowFactor = light and 0.6 or 1
         for object, info in pairs(glassSurfaces) do
             if object.Parent then
                 info.Sheen.Color = light and lightSheen or darkSheen
@@ -247,8 +260,65 @@ function Library:CreateWindow(config)
                 end
             end
         end
-        for glow, strength in pairs(glowLayers) do
-            if glow.Parent then setGlowStrength(glow, strength) end
+    end
+
+    -- Element glows live in a layer drawn beneath the content, outside the row/content CanvasGroups that
+    -- would otherwise clip them. Each frame they are re-placed under their element and faded with it.
+    local liveGlows = {}
+    local function attachGlow(layer, element, options)
+        local spread = options.Spread or 8
+        local halo, layers = buildHalo(layer, spread, options.Radius or 6)
+        local record = {
+            Halo = halo,
+            Layers = layers,
+            Element = element,
+            Layer = layer,
+            Spread = spread,
+            Strength = options.Strength or 1,
+            Role = options.Role,
+            Boundary = options.Boundary,
+            Factor = options.Factor,
+            Level = 0,
+            Target = options.Level or 1,
+        }
+        liveGlows[record] = true
+        return record
+    end
+    local function stepGlows(dt)
+        local blend = 1 - math.exp(-14 * dt)
+        for record in pairs(liveGlows) do
+            local halo, element = record.Halo, record.Element
+            if not element.Parent or not halo.Parent then
+                liveGlows[record] = nil
+                if halo.Parent then halo:Destroy() end
+            else
+                record.Level = record.Level + (record.Target - record.Level) * blend
+                if math.abs(record.Target - record.Level) < 0.002 then record.Level = record.Target end
+                local strength = record.Level * record.Strength
+                local object = element
+                while strength > 0.002 and object and object ~= record.Boundary do
+                    if object:IsA("GuiObject") then
+                        if not object.Visible then
+                            strength = 0
+                        elseif object:IsA("CanvasGroup") then
+                            strength = strength * (1 - object.GroupTransparency)
+                        end
+                    end
+                    object = object.Parent
+                end
+                if strength <= 0.002 then
+                    halo.Visible = false
+                else
+                    local factor = math.max(0.01, record.Factor())
+                    local spread = record.Spread
+                    local position = (element.AbsolutePosition - record.Layer.AbsolutePosition) / factor
+                    local size = element.AbsoluteSize / factor
+                    halo.Visible = true
+                    halo.Position = UDim2.fromOffset(position.X - spread, position.Y - spread)
+                    halo.Size = UDim2.fromOffset(size.X + spread * 2, size.Y + spread * 2)
+                    paintHalo(record.Layers, record.Role and Theme[record.Role] or element.BackgroundColor3, strength)
+                end
+            end
         end
     end
     local function glassSurface(object, transparency, existingStroke)
@@ -345,26 +415,6 @@ function Library:CreateWindow(config)
     local resizeConnection = viewport:GetPropertyChangedSignal("AbsoluteSize"):Connect(resize)
     screen.Destroying:Connect(function() resizeConnection:Disconnect() end)
     resize()
-
-    local windowGlowSpread = 30
-    local windowGlow = createGlow(nil, windowGlowSpread, 0.32)
-    windowGlow.Name = "WindowGlow"
-    local function syncWindowGlow()
-        windowGlow.AnchorPoint = root.AnchorPoint
-        windowGlow.Position = root.Position
-        windowGlow.Size = UDim2.fromOffset(
-            root.Size.X.Offset * scale.Scale + windowGlowSpread * 2,
-            root.Size.Y.Offset * scale.Scale + windowGlowSpread * 2
-        )
-        windowGlow.ZIndex = root.ZIndex - 1
-        windowGlow.Visible = root.Visible
-        windowGlow.Parent = root.Parent
-    end
-    for _, property in ipairs({ "Position", "Size", "AnchorPoint", "Visible", "Parent", "ZIndex" }) do
-        root:GetPropertyChangedSignal(property):Connect(syncWindowGlow)
-    end
-    scale:GetPropertyChangedSignal("Scale"):Connect(syncWindowGlow)
-    syncWindowGlow()
 
     local sidebar = rounded("Frame", "Sidebar", root, 0, 0, 0, 447, "Background", 17)
     sidebar.BackgroundTransparency = 1
@@ -499,16 +549,20 @@ function Library:CreateWindow(config)
         table.insert(connections, connection)
         return connection
     end
+    track(game:GetService("RunService").RenderStepped:Connect(stepGlows))
+    local dockGlowLayer, dockGlowFactor
     local dragStarts = setmetatable({}, { __mode = "k" })
     local function passesInput(object)
-        return object:GetAttribute("PassInput") == true
-            or (object:IsA("Frame") or object:IsA("ScrollingFrame"))
-                and not object.Active
-                and object.BackgroundTransparency >= 1
+        return (object:IsA("Frame") or object:IsA("ScrollingFrame"))
+            and not object.Active
+            and object.BackgroundTransparency >= 1
     end
     local function findDragStart(objects, boundary, bindings)
         for _, hit in ipairs(objects) do
             if not hit:IsDescendantOf(boundary) then return end
+            -- Decorative layers (glows) are skipped outright: the card glow layer lives under the
+            -- title, so resolving its bindings would let a click beside a control start a card drag.
+            if hit:GetAttribute("PassInput") then continue end
             local ancestor = hit
             while ancestor and ancestor ~= boundary do
                 if bindings[ancestor] then return bindings[ancestor], hit end
@@ -733,8 +787,11 @@ function Library:CreateWindow(config)
         cardScale.Scale = 0.94
         cardScale.Parent = holder
         -- Scale-sized so it tracks the holder without feeding back into its automatic size.
-        local glow = createGlow(holder, toastGlowSpread, 0.28)
+        local glow, glowRings = buildHalo(holder, toastGlowSpread, 12)
+        glow.AnchorPoint = Vector2.new(0.5, 0.5)
+        glow.Position = UDim2.fromScale(0.5, 0.5)
         glow.Size = UDim2.new(1, toastGlowSpread * 2, 1, toastGlowSpread * 2)
+        paintHalo(glowRings, Theme.Accent, 0.6)
 
         local card = rounded("Frame", "Card", holder, 0, 0, 0, 0, "Background", 12)
         card.AutomaticSize = Enum.AutomaticSize.XY
@@ -1647,7 +1704,23 @@ function Library:CreateWindow(config)
         groupContent.AutomaticSize = Enum.AutomaticSize.Y
         groupContent.BackgroundTransparency = 1
         groupContent.LayoutOrder = 1
+        groupContent.ZIndex = 2
         groupContent.Parent = frame
+        -- Control glows hang off the title (a plain, unclipped button) so only the card itself clips them,
+        -- and draw beneath the content because the content is raised to ZIndex 2.
+        local glowLayer = Instance.new("Frame")
+        glowLayer.Name = "GlowLayer"
+        glowLayer.BackgroundTransparency = 1
+        glowLayer.Size = UDim2.fromOffset(0, 0)
+        glowLayer.ZIndex = 0
+        glowLayer.Parent = title
+        local function titleFactor() return title.AbsoluteSize.Y / math.max(1, title.Size.Y.Offset) end
+        local function elementGlow(element, options)
+            options = options or {}
+            options.Boundary = frame
+            options.Factor = titleFactor
+            return attachGlow(glowLayer, element, options)
+        end
         local innerLayout = Instance.new("UIListLayout")
         innerLayout.SortOrder = Enum.SortOrder.LayoutOrder
         innerLayout.Padding = UDim.new(0, 6)
@@ -2041,10 +2114,13 @@ function Library:CreateWindow(config)
             bindTheme(stroke, "Color", "Border")
             stroke.Parent = button
             local check = icon(button, "check", 2, 2, 14, "OnAccent")
+            local checkGlow = elementGlow(button, { Spread = 6, Radius = 4, Strength = 0.85, Role = "Accent", Level = 0 })
             local control = { Value = false }
             function control:Set(value, silent)
                 self.Value = value == true
                 check.Visible = self.Value
+                checkGlow.Target = self.Value and 1 or 0
+                if silent then checkGlow.Level = checkGlow.Target end
                 tween(button, { BackgroundColor3 = self.Value and "Accent" or "Search" })
                 tween(stroke, { Color = self.Value and "Accent" or "Border" })
                 if not silent and options.Callback then options.Callback(self.Value) end
@@ -2090,6 +2166,7 @@ function Library:CreateWindow(config)
             local stroke = Instance.new("UIStroke")
             bindTheme(stroke, "Color", "Muted")
             stroke.Parent = swatch
+            elementGlow(swatch, { Spread = 6, Radius = 4, Strength = 0.75 })
             local picker = createColorPicker(container, swatch, options)
             persistColor(options, picker, container)
             tab.Columns[side]:GetPropertyChangedSignal("CanvasPosition"):Connect(function()
@@ -2120,6 +2197,7 @@ function Library:CreateWindow(config)
             animateButton(keyButton, "Search")
             local button = rounded("TextButton", "Switch", container, 0, 4, 34, 20, "Navigation", 10)
             button.Position = UDim2.new(1, -34, 0, 4)
+            local switchGlow = elementGlow(button, { Spread = 7, Radius = 10, Role = "Accent", Level = 0 })
             local dot = rounded("Frame", "Dot", button, 10, 10, 14, 14, "Muted", 7)
             dot.AnchorPoint = Vector2.new(0.5, 0.5)
             local toggleRevision = 0
@@ -2156,6 +2234,7 @@ function Library:CreateWindow(config)
                 local stroke = Instance.new("UIStroke")
                 bindTheme(stroke, "Color", "Muted")
                 stroke.Parent = swatch
+                elementGlow(swatch, { Spread = 6, Radius = 4, Strength = 0.75 })
                 colorOptions = colorOptions or {}
                 colorOptions.Name = colorOptions.Name or ((options.Name or "Toggle") .. " color")
                 colorOptions.NoSave = colorOptions.NoSave or options.NoSave
@@ -2223,6 +2302,8 @@ function Library:CreateWindow(config)
                 toggleRevision = toggleRevision + 1
                 local revision = toggleRevision
                 motion(button, { BackgroundColor3 = self.Value and "Accent" or "Navigation" }, 0.18, silent)
+                switchGlow.Target = self.Value and 1 or 0
+                if silent then switchGlow.Level = switchGlow.Target end
                 motion(dot, {
                     Position = UDim2.fromOffset(self.Value and 24 or 10, 10),
                     BackgroundColor3 = self.Value and "OnAccent" or "Muted",
@@ -2380,6 +2461,7 @@ function Library:CreateWindow(config)
             local trackFrame = rounded("Frame", "Track", hit, 0, 10, 0, 8, "Navigation", 4)
             trackFrame.Size = UDim2.new(1, 0, 0, 8)
             local fill = rounded("Frame", "Fill", trackFrame, 0, 0, 0, 8, "Accent", 4)
+            local fillGlow = elementGlow(fill, { Spread = 6, Radius = 4, Strength = 0.8, Role = "Accent" })
             local highlight = Instance.new("UIGradient")
             highlight.Transparency =
                 NumberSequence.new({ NumberSequenceKeypoint.new(0, 0.28), NumberSequenceKeypoint.new(1, 0) })
@@ -2422,6 +2504,7 @@ function Library:CreateWindow(config)
                 local a, b = (low - minimum) / (maximum - minimum), (high - minimum) / (maximum - minimum)
                 local duration = activeSlider and activeSlider.Control == self and 0.065 or 0.2
                 motion(fill, { Position = UDim2.fromScale(a, 0), Size = UDim2.fromScale(b - a, 1) }, duration, silent)
+                fillGlow.Target = b - a > 0.001 and 1 or 0
                 motion(highKnob, { Position = UDim2.new(b, 0, 0.5, 0) }, duration, silent)
                 if isRange then
                     motion(lowKnob, { Position = UDim2.new(a, 0, 0.5, 0) }, duration, silent)
@@ -3359,6 +3442,7 @@ function Library:CreateWindow(config)
             motion(tab.Button, { BackgroundTransparency = active and 0.12 or 1 }, 0.22)
             motion(tab.Scale, { Scale = active and 1.04 or 1 }, 0.22)
             motion(tab.Stroke, { Transparency = active and 0.18 or 1 }, 0.22)
+            tab.Glow.Target = active and 1 or 0
             tweenIcon(tab.Icon, "Icon")
             tween(tab.Icon, { ImageTransparency = active and 0 or 0.4 }, 0.16)
         end
@@ -3385,6 +3469,14 @@ function Library:CreateWindow(config)
         addTooltip(button, tab.Name)
         tab.Scale = Instance.new("UIScale")
         tab.Scale.Parent = button
+        tab.Glow = attachGlow(dockGlowLayer, button, {
+            Spread = 10,
+            Radius = 10,
+            Strength = 0.9,
+            Role = "Accent",
+            Level = 0,
+            Factor = dockGlowFactor,
+        })
         tab.Icon = icon(button, config.Icon or "layout-grid", 10, 10, 20)
         tab.Icon.ImageTransparency = 0.4
         tab.Title = label(button, tab.Name, 12)
@@ -3893,8 +3985,14 @@ function Library:CreateWindow(config)
     dockHost.Parent = viewport
     local dockScale = Instance.new("UIScale")
     dockScale.Parent = dockHost
-    local dockGlow = createGlow(dockHost, 22, 0.3)
     local dockGlass = rounded("Frame", "DockGlass", dockHost, 0, 0, 0, 0, "Background", 22)
+    -- Sits on the glass, beneath the tab strip (sidebar is raised above the glass in setLayoutStyle).
+    dockGlowLayer = Instance.new("Frame")
+    dockGlowLayer.Name = "GlowLayer"
+    dockGlowLayer.BackgroundTransparency = 1
+    dockGlowLayer.Size = UDim2.fromOffset(0, 0)
+    dockGlowLayer.Parent = dockGlass
+    dockGlowFactor = function() return dockScale.Scale end
     dockGlass.Size = UDim2.fromScale(1, 1)
     dockGlass.BackgroundTransparency = 0.08
     local dockRim = Instance.new("UIStroke")
@@ -3925,7 +4023,6 @@ function Library:CreateWindow(config)
         dockScale.Scale = dockFitScale * (0.94 + 0.06 * dockProgress)
         dockGlass.BackgroundTransparency = (0.08 + (1 - progress) * 0.22) * glassOpacityFactor
         dockRim.Transparency = 0.92 + (1 - progress) * 0.08
-        setGlowStrength(dockGlow, 0.3 * progress)
         local reveal = dockAutoHide and (1 - progress) or 0
         dockReveal.Visible = reveal > 0.005
         dockReveal.Interactable = not dockExpanded and reveal > 0.2
@@ -3970,6 +4067,7 @@ function Library:CreateWindow(config)
         cancelWindowDrag()
         cancelWindowResize()
         sidebar.Parent = dockHost
+        sidebar.ZIndex = 2
         sidebar.Position = UDim2.fromOffset(0, 0)
         sidebar.Active = false
         navigationLayout.Padding = UDim.new(0, 8)
@@ -3996,7 +4094,7 @@ function Library:CreateWindow(config)
         -- Reversing mid-flight keeps the current velocity, so rapid toggles never snap.
         local home, savedPosition
         local progress, velocity, target = 1, 0, 1
-        local minimumScale, hostPadding = 0.14, windowGlowSpread + 2
+        local minimumScale, hostPadding = 0.14, 12
         local function landingPoint()
             local center = 14 + 32 * dockFitScale
             return Vector2.new(viewport.AbsoluteSize.X / 2, viewport.AbsoluteSize.Y - center)
