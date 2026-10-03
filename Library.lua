@@ -203,13 +203,32 @@ function Library:CreateWindow(config)
         return object
     end
 
+    -- Glass is tuned per theme brightness: on light themes a lavender multiply and a see-through
+    -- background read as a dirty purple-grey wash, so the sheen goes neutral and the surface goes near-opaque.
+    local glassSurfaces = setmetatable({}, { __mode = "k" })
+    local glassOpacityFactor = 1
+    local darkSheen = ColorSequence.new(Color3.new(1, 1, 1), Color3.fromRGB(220, 213, 239))
+    local lightSheen = ColorSequence.new(Color3.new(1, 1, 1), Color3.fromRGB(244, 243, 248))
+    local function refreshGlass()
+        local light = luminance(Theme.Background) > 0.5
+        glassOpacityFactor = light and 0.25 or 1
+        for object, info in pairs(glassSurfaces) do
+            if object.Parent then
+                info.Sheen.Color = light and lightSheen or darkSheen
+                if info.Transparency < 1 then
+                    object.BackgroundTransparency = info.Transparency * glassOpacityFactor
+                end
+            end
+        end
+    end
     local function glassSurface(object, transparency, existingStroke)
-        object.BackgroundTransparency = transparency
+        object.BackgroundTransparency = transparency * (transparency < 1 and glassOpacityFactor or 1)
         local sheen = Instance.new("UIGradient")
         sheen.Name = "GlassSheen"
         sheen.Rotation = 110
-        sheen.Color = ColorSequence.new(Color3.new(1, 1, 1), Color3.fromRGB(220, 213, 239))
+        sheen.Color = glassOpacityFactor < 1 and lightSheen or darkSheen
         sheen.Parent = object
+        glassSurfaces[object] = { Transparency = transparency, Sheen = sheen }
         local rim = existingStroke or Instance.new("UIStroke")
         rim.Name = "GlassRim"
         rim.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
@@ -2092,7 +2111,7 @@ function Library:CreateWindow(config)
                 local coords = iconAtlas["bell"]
                 bellIcon.ImageRectOffset = Vector2.new(coords[1], coords[2])
                 tween(bellIcon, {
-                    ImageColor3 = self.Notify and Color3.fromRGB(255, 255, 255) or "Muted",
+                    ImageColor3 = self.Notify and "Text" or "Muted",
                     ImageTransparency = 0,
                 }, 0.18)
             end
@@ -3621,6 +3640,7 @@ function Library:CreateWindow(config)
                 end
             end
         end
+        refreshGlass()
         if self.ColorControls then
             for role, picker in pairs(self.ColorControls) do
                 picker:Set(Theme[role], 0, true)
@@ -3801,7 +3821,7 @@ function Library:CreateWindow(config)
         dockHost.AnchorPoint = Vector2.new(0.5, 1)
         dockHost.Position = UDim2.new(0.5, 0, 1, 76 - 90 * dockProgress)
         dockScale.Scale = dockFitScale * (0.94 + 0.06 * dockProgress)
-        dockGlass.BackgroundTransparency = 0.08 + (1 - progress) * 0.22
+        dockGlass.BackgroundTransparency = (0.08 + (1 - progress) * 0.22) * glassOpacityFactor
         dockRim.Transparency = 0.92 + (1 - progress) * 0.08
         local reveal = dockAutoHide and (1 - progress) or 0
         dockReveal.Visible = reveal > 0.005
