@@ -4289,10 +4289,6 @@ function Library:CreateWindow(config)
             + ((revealHover and 1 or 0) - revealHoverAmount) * (1 - math.exp(-16 * dt))
         renderDock()
     end))
-    local dragInput, dragStart, windowStart, dragTarget, dragRendered
-    cancelWindowDrag = function()
-        dragInput, dragTarget, dragRendered = nil, nil, nil
-    end
     local function windowAnchor()
         local size = viewport.AbsoluteSize
         return Vector2.new(
@@ -4310,11 +4306,18 @@ function Library:CreateWindow(config)
         )
         return Vector2.new(math.clamp(position.X, low.X, high.X), math.clamp(position.Y, low.Y, high.Y))
     end
+    local resizeHandle
+    -- Scoped block: CreateWindow sits close to Luau's 200-local limit, so helpers used only by
+    -- window dragging live in here instead of at function level.
+    do
+    local dragInput, dragStart, windowStart, dragTarget, dragRendered
+    cancelWindowDrag = function()
+        dragInput, dragTarget, dragRendered = nil, nil, nil
+    end
     local function inside(point, object)
         local p, size = object.AbsolutePosition, object.AbsoluteSize
         return point.X >= p.X and point.X <= p.X + size.X and point.Y >= p.Y and point.Y <= p.Y + size.Y
     end
-    local resizeHandle
     local function beginDrag(input, hit)
         if
             input.UserInputType ~= Enum.UserInputType.MouseButton1
@@ -4391,6 +4394,7 @@ function Library:CreateWindow(config)
         focusConnection:Disconnect()
         dragResizeConnection:Disconnect()
     end)
+    end
 
     local function setWindowSize(size)
         assert(typeof(size) == "Vector2", "Window size expects Vector2")
