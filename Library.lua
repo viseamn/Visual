@@ -209,9 +209,36 @@ function Library:CreateWindow(config)
     local glassOpacityFactor = 1
     local darkSheen = ColorSequence.new(Color3.new(1, 1, 1), Color3.fromRGB(220, 213, 239))
     local lightSheen = ColorSequence.new(Color3.new(1, 1, 1), Color3.fromRGB(244, 243, 248))
+    -- Soft accent halo: a 9-slice blurred image placed behind a surface (never inside it, since
+    -- children always draw over their parent). Light themes get a fainter halo so it reads as glow, not stain.
+    local glowLayers = setmetatable({}, { __mode = "k" })
+    local glowFactor = 1
+    local function setGlowStrength(glow, strength)
+        glowLayers[glow] = strength
+        glow.ImageTransparency = 1 - math.clamp(strength * glowFactor, 0, 1)
+    end
+    local function createGlow(parent, spread, strength)
+        local glow = Instance.new("ImageLabel")
+        glow.Name = "Glow"
+        glow.BackgroundTransparency = 1
+        glow.Image = "rbxassetid://5028857084"
+        glow.ScaleType = Enum.ScaleType.Slice
+        glow.SliceCenter = Rect.new(24, 24, 276, 276)
+        glow.SliceScale = spread / 24
+        glow.AnchorPoint = Vector2.new(0.5, 0.5)
+        glow.Position = UDim2.fromScale(0.5, 0.5)
+        glow.Size = UDim2.new(1, spread * 2, 1, spread * 2)
+        glow.ZIndex = 0
+        glow:SetAttribute("PassInput", true)
+        bindTheme(glow, "ImageColor3", "Accent")
+        setGlowStrength(glow, strength)
+        glow.Parent = parent
+        return glow
+    end
     local function refreshGlass()
         local light = luminance(Theme.Background) > 0.5
         glassOpacityFactor = light and 0.25 or 1
+        glowFactor = light and 0.55 or 1
         for object, info in pairs(glassSurfaces) do
             if object.Parent then
                 info.Sheen.Color = light and lightSheen or darkSheen
@@ -219,6 +246,9 @@ function Library:CreateWindow(config)
                     object.BackgroundTransparency = info.Transparency * glassOpacityFactor
                 end
             end
+        end
+        for glow, strength in pairs(glowLayers) do
+            if glow.Parent then setGlowStrength(glow, strength) end
         end
     end
     local function glassSurface(object, transparency, existingStroke)
@@ -315,6 +345,26 @@ function Library:CreateWindow(config)
     local resizeConnection = viewport:GetPropertyChangedSignal("AbsoluteSize"):Connect(resize)
     screen.Destroying:Connect(function() resizeConnection:Disconnect() end)
     resize()
+
+    local windowGlowSpread = 30
+    local windowGlow = createGlow(nil, windowGlowSpread, 0.32)
+    windowGlow.Name = "WindowGlow"
+    local function syncWindowGlow()
+        windowGlow.AnchorPoint = root.AnchorPoint
+        windowGlow.Position = root.Position
+        windowGlow.Size = UDim2.fromOffset(
+            root.Size.X.Offset * scale.Scale + windowGlowSpread * 2,
+            root.Size.Y.Offset * scale.Scale + windowGlowSpread * 2
+        )
+        windowGlow.ZIndex = root.ZIndex - 1
+        windowGlow.Visible = root.Visible
+        windowGlow.Parent = root.Parent
+    end
+    for _, property in ipairs({ "Position", "Size", "AnchorPoint", "Visible", "Parent", "ZIndex" }) do
+        root:GetPropertyChangedSignal(property):Connect(syncWindowGlow)
+    end
+    scale:GetPropertyChangedSignal("Scale"):Connect(syncWindowGlow)
+    syncWindowGlow()
 
     local sidebar = rounded("Frame", "Sidebar", root, 0, 0, 0, 447, "Background", 17)
     sidebar.BackgroundTransparency = 1
@@ -451,9 +501,10 @@ function Library:CreateWindow(config)
     end
     local dragStarts = setmetatable({}, { __mode = "k" })
     local function passesInput(object)
-        return (object:IsA("Frame") or object:IsA("ScrollingFrame"))
-            and not object.Active
-            and object.BackgroundTransparency >= 1
+        return object:GetAttribute("PassInput") == true
+            or (object:IsA("Frame") or object:IsA("ScrollingFrame"))
+                and not object.Active
+                and object.BackgroundTransparency >= 1
     end
     local function findDragStart(objects, boundary, bindings)
         for _, hit in ipairs(objects) do
@@ -596,24 +647,55 @@ function Library:CreateWindow(config)
         object.Parent = parent
         return object
     end
+    -- Each toast sits in a padded holder that also contains its glow, so the stack's edges and the
+    -- gap between toasts are measured from the holders; the padding is cancelled out below.
+    local toastGlowSpread = 16
     local toastStack = Instance.new("Frame")
     toastStack.Name = "Notifications"
-    toastStack.AnchorPoint = Vector2.new(1, 1)
-    toastStack.Position = UDim2.new(1, -16, 1, -16)
-    toastStack.Size = UDim2.new(1, -32, 1, -32)
+    toastStack.Size = UDim2.fromScale(1, 1)
     toastStack.BackgroundTransparency = 1
     toastStack.ZIndex = 200
     toastStack.Parent = viewport
     local toastLimit = Instance.new("UISizeConstraint")
-    toastLimit.MaxSize = Vector2.new(420, 100000)
+    toastLimit.MaxSize = Vector2.new(420 + toastGlowSpread * 2, 100000)
     toastLimit.Parent = toastStack
     local toastLayout = Instance.new("UIListLayout")
-    toastLayout.VerticalAlignment = Enum.VerticalAlignment.Bottom
-    toastLayout.HorizontalAlignment = Enum.HorizontalAlignment.Right
     toastLayout.SortOrder = Enum.SortOrder.LayoutOrder
-    toastLayout.Padding = UDim.new(0, 8)
+    toastLayout.Padding = UDim.new(0, 8 - toastGlowSpread * 2)
     toastLayout.Parent = toastStack
     local toasts, toastOrder = {}, 0
+    local notificationAnchors = {
+        TopLeft = Vector2.new(0, 0),
+        Top = Vector2.new(0.5, 0),
+        TopRight = Vector2.new(1, 0),
+        BottomLeft = Vector2.new(0, 1),
+        Bottom = Vector2.new(0.5, 1),
+        BottomRight = Vector2.new(1, 1),
+    }
+    local notificationPosition = "BottomRight"
+    local function toastLayoutOrder(order)
+        -- Newest toast sits closest to the screen edge it is anchored to.
+        return notificationAnchors[notificationPosition].Y == 0 and -order or order
+    end
+    local function setNotificationPosition(position)
+        local anchor = notificationAnchors[position]
+        assert(anchor, "Notification position must be TopLeft, Top, TopRight, BottomLeft, Bottom or BottomRight")
+        notificationPosition = position
+        -- Bottom-center would sit on the dock, so lift it above the bar.
+        local lift = position == "Bottom" and -78 or 0
+        toastStack.AnchorPoint = anchor
+        toastStack.Position = UDim2.new(anchor.X, 0, anchor.Y, lift)
+        toastStack.Size = UDim2.new(1, 0, 1, -math.abs(lift))
+        toastLayout.HorizontalAlignment = anchor.X == 0 and Enum.HorizontalAlignment.Left
+            or anchor.X == 1 and Enum.HorizontalAlignment.Right
+            or Enum.HorizontalAlignment.Center
+        toastLayout.VerticalAlignment = anchor.Y == 0 and Enum.VerticalAlignment.Top
+            or Enum.VerticalAlignment.Bottom
+        for _, toast in ipairs(toasts) do
+            toast.Holder.LayoutOrder = toastLayoutOrder(toast.Order)
+        end
+    end
+    setNotificationPosition(notificationPosition)
     local function notify(config)
         if not uiAlive then return end
         if type(config) == "string" then config = { Title = config } end
@@ -632,18 +714,36 @@ function Library:CreateWindow(config)
             or contentText
             or "Notification"
 
-        local card = rounded("CanvasGroup", "Notification", toastStack, 0, 0, 0, 0, "Background", 12)
+        local holder = Instance.new("CanvasGroup")
+        holder.Name = "Notification"
+        holder.AutomaticSize = Enum.AutomaticSize.XY
+        holder.BackgroundTransparency = 1
+        holder.BorderSizePixel = 0
+        holder.LayoutOrder = toastLayoutOrder(toastOrder)
+        holder.GroupTransparency = 1
+        holder:SetAttribute("PassInput", true)
+        holder.Parent = toastStack
+        local holderPadding = Instance.new("UIPadding")
+        holderPadding.PaddingTop = UDim.new(0, toastGlowSpread)
+        holderPadding.PaddingBottom = UDim.new(0, toastGlowSpread)
+        holderPadding.PaddingLeft = UDim.new(0, toastGlowSpread)
+        holderPadding.PaddingRight = UDim.new(0, toastGlowSpread)
+        holderPadding.Parent = holder
+        local cardScale = Instance.new("UIScale")
+        cardScale.Scale = 0.94
+        cardScale.Parent = holder
+        -- Scale-sized so it tracks the holder without feeding back into its automatic size.
+        local glow = createGlow(holder, toastGlowSpread, 0.28)
+        glow.Size = UDim2.new(1, toastGlowSpread * 2, 1, toastGlowSpread * 2)
+
+        local card = rounded("Frame", "Card", holder, 0, 0, 0, 0, "Background", 12)
         card.AutomaticSize = Enum.AutomaticSize.XY
         card.BackgroundTransparency = 0.04
-        card.LayoutOrder = toastOrder
-        card.GroupTransparency = 1
+        card.ZIndex = 1
         local stroke = Instance.new("UIStroke")
         bindTheme(stroke, "Color", "Text")
         stroke.Transparency = 0.9
         stroke.Parent = card
-        local cardScale = Instance.new("UIScale")
-        cardScale.Scale = 0.94
-        cardScale.Parent = card
 
         local row = Instance.new("Frame")
         row.Name = "Row"
@@ -683,20 +783,21 @@ function Library:CreateWindow(config)
         close.Size = UDim2.fromScale(1, 1)
         close.ZIndex = 2
         close.Parent = card
-        local progress = rounded("Frame", "Lifetime", card, 0, 0, 0, 2, "Text", 1)
+        -- Inset from the rounded corners, since a plain Frame does not clip to its UICorner.
+        local progress = rounded("Frame", "Lifetime", card, 0, 0, 0, 2, "Accent", 1)
         progress.AnchorPoint = Vector2.new(0, 1)
-        progress.Position = UDim2.fromScale(0, 1)
-        progress.Size = UDim2.new(1, 0, 0, 2)
-        progress.BackgroundTransparency = 0.8
+        progress.Position = UDim2.new(0, 12, 1, -1)
+        progress.Size = UDim2.new(1, -24, 0, 2)
+        progress.BackgroundTransparency = 0.45
         local timer = TweenService:Create(
             progress,
             TweenInfo.new(duration, Enum.EasingStyle.Linear),
             { Size = UDim2.new(0, 0, 0, 2) }
         )
         timer:Play()
-        local entrance = tween(card, { GroupTransparency = 0 }, 0.2)
+        local entrance = tween(holder, { GroupTransparency = 0 }, 0.2)
         motion(cardScale, { Scale = 1 }, 0.2)
-        local toast = { Closed = false }
+        local toast = { Closed = false, Holder = holder, Order = toastOrder }
         function toast:Dismiss(immediate)
             if self.Closed then return end
             self.Closed = true
@@ -709,13 +810,13 @@ function Library:CreateWindow(config)
                 end
             end
             if immediate then
-                card:Destroy()
+                holder:Destroy()
                 return
             end
-            tween(card, { GroupTransparency = 1 }, 0.18)
+            tween(holder, { GroupTransparency = 1 }, 0.18)
             motion(cardScale, { Scale = 0.94 }, 0.18)
             task.delay(animationDuration(0.18), function()
-                if uiAlive and card.Parent then card:Destroy() end
+                if uiAlive and holder.Parent then holder:Destroy() end
             end)
         end
         table.insert(toasts, toast)
@@ -1089,19 +1190,9 @@ function Library:CreateWindow(config)
         unbindTheme(swatch, "BackgroundColor3")
         local picker = { Revision = 0, Trigger = swatch }
         local hue, saturation, brightness, opacity = 0, 1, 1, 1
-        local alphaEnabled = options.Alpha ~= false
-        local padding, wheelSize = 12, 180
-        local center = wheelSize / 2
-        local hueRadius, hueThickness = 82, 9
-        local squareSize = 96
-        local pickerWidth = wheelSize + padding * 2
-        local alphaY = padding + wheelSize + 10
-        local hexY = alphaY + (alphaEnabled and 24 or 0)
-        local fieldsY = hexY + 34
-        local pickerHeight = fieldsY + 26 + padding
-        -- Styled like the dropdown menu so the popup reads as part of the same UI.
+        local pickerWidth, pickerHeight = 194, 230
         local panel =
-            rounded("CanvasGroup", "ColorPicker", dropdownOverlay, 0, 0, pickerWidth, pickerHeight, "Card", 9)
+            rounded("CanvasGroup", "ColorPicker", dropdownOverlay, 0, 0, pickerWidth, pickerHeight, "Background", 8)
         panel.ZIndex = 2
         panel.Visible = false
         picker.Options = panel
@@ -1109,114 +1200,81 @@ function Library:CreateWindow(config)
         panelScale.Parent = panel
         local border = Instance.new("UIStroke")
         bindTheme(border, "Color", "Border")
-        border.Transparency = 0.2
+        border.Transparency = 0.65
         border.Parent = panel
 
-        local wheel = rounded("TextButton", "Wheel", panel, padding, padding, wheelSize, wheelSize, "Card", 0)
-        wheel.BackgroundTransparency = 1
-        local rings = Instance.new("Frame")
-        rings.Name = "Ring"
-        rings.Size = UDim2.fromScale(1, 1)
-        rings.BackgroundTransparency = 1
-        rings.Parent = wheel
-        local function polar(angle, radius)
-            local radians = math.rad(angle)
-            return UDim2.fromOffset(center + radius * math.cos(radians), center - radius * math.sin(radians))
-        end
-
-        -- Saturation/brightness square inside the ring: always visible, even for near-black colours.
-        local square = rounded("Frame", "SaturationValue", wheel, 0, 0, squareSize, squareSize, Color3.new(1, 1, 1), 6)
-        square.AnchorPoint = Vector2.new(0.5, 0.5)
-        square.Position = UDim2.fromOffset(center, center)
+        local square = rounded("TextButton", "SaturationValue", panel, 14, 11, 146, 146, Color3.new(1, 1, 1), 4)
+        square.BackgroundTransparency = 1
+        square.Active = false
+        local surface = rounded("CanvasGroup", "Surface", square, 0, 0, 146, 146, Color3.new(1, 1, 1), 4)
+        surface.ClipsDescendants = true
         local saturationGradient = Instance.new("UIGradient")
-        saturationGradient.Parent = square
-        local shade = rounded("Frame", "ValueShade", square, 0, 0, 0, 0, Color3.new(0, 0, 0), 6)
-        shade.Size = UDim2.fromScale(1, 1)
-        local shadeGradient = Instance.new("UIGradient")
-        shadeGradient.Rotation = 90
-        shadeGradient.Transparency = NumberSequence.new(1, 0)
-        shadeGradient.Parent = shade
+        saturationGradient.Parent = surface
+        local darkness = rounded("Frame", "ValueShade", surface, 0, 0, 146, 146, Color3.new(0, 0, 0), 0)
+        local valueGradient = Instance.new("UIGradient")
+        valueGradient.Rotation = 90
+        valueGradient.Transparency = NumberSequence.new(1, 0)
+        valueGradient.Parent = darkness
+        local marker = rounded("Frame", "Selection", square, 0, 0, 10, 10, "Text", 5)
+        marker.AnchorPoint = Vector2.new(0.5, 0.5)
+        marker.BackgroundTransparency = 1
+        marker.ZIndex = 3
+        local markerOutline = Instance.new("UIStroke")
+        markerOutline.Color = Color3.new(1, 1, 1)
+        markerOutline.Thickness = 1.5
+        markerOutline.Parent = marker
 
-        local function makeThumb(parent, name, size)
-            local knob = rounded("Frame", name, parent, 0, 0, size, size, Color3.new(1, 1, 1), size / 2)
+        local hueHit = rounded("TextButton", "Hue", panel, 166, 11, 20, 146, "Card", 0)
+        hueHit.BackgroundTransparency = 1
+        hueHit.Active = false
+        local hueBar = rounded("Frame", "Track", hueHit, 6, 0, 8, 146, Color3.new(1, 1, 1), 4)
+        local hueGradient = Instance.new("UIGradient")
+        hueGradient.Rotation = 90
+        local hueKeys = {}
+        for index = 0, 6 do
+            table.insert(hueKeys, ColorSequenceKeypoint.new(index / 6, Color3.fromHSV(index / 6, 1, 1)))
+        end
+        hueGradient.Color = ColorSequence.new(hueKeys)
+        hueGradient.Parent = hueBar
+        local function makePickerThumb(parent, name, x, y)
+            local knob = rounded("Frame", name, parent, x, y, 14, 14, Color3.new(1, 1, 1), 7)
+            unbindTheme(knob, "BackgroundColor3")
             knob.AnchorPoint = Vector2.new(0.5, 0.5)
             knob.ZIndex = 4
             local outline = Instance.new("UIStroke")
-            outline.Color = Color3.new(0, 0, 0)
-            outline.Transparency = 0.55
+            bindTheme(outline, "Color", "Background")
+            outline.Thickness = 1
+            outline.Transparency = 0.2
             outline.Parent = knob
-            local core = rounded("Frame", "Color", knob, 3, 3, size - 6, size - 6, Color3.new(1, 0, 0), (size - 6) / 2)
+            local core = rounded("Frame", "Color", knob, 3, 3, 8, 8, Color3.new(1, 0, 0), 4)
+            unbindTheme(core, "BackgroundColor3")
             core.ZIndex = 5
             local thumbScale = Instance.new("UIScale")
             thumbScale.Parent = knob
             return knob, core, thumbScale
         end
-        local hueKnob, hueCore, hueScale = makeThumb(wheel, "HueKnob", 16)
-        local marker, markerCore, markerScale = makeThumb(square, "Selection", 14)
+        local hueKnob, hueCore, hueScale = makePickerThumb(hueBar, "Knob", 4, 7)
 
-        -- Opacity uses the same track/fill/knob language as the library's sliders.
-        local alphaHit = rounded("TextButton", "Opacity", panel, padding, alphaY, wheelSize, 16, "Card", 0)
+        local alphaHit = rounded("TextButton", "Opacity", panel, 14, 162, 166, 22, "Card", 0)
         alphaHit.BackgroundTransparency = 1
-        alphaHit.Visible = alphaEnabled
-        local alphaTrack = rounded("Frame", "Track", alphaHit, 0, 4, wheelSize, 8, "Navigation", 4)
-        local alphaFill = rounded("Frame", "Fill", alphaTrack, 0, 0, 0, 0, Color3.new(1, 1, 1), 4)
-        alphaFill.Size = UDim2.fromScale(1, 1)
+        alphaHit.Active = false
+        local alphaBar = rounded("CanvasGroup", "Track", alphaHit, 0, 7, 166, 8, Color3.fromRGB(80, 82, 88), 4)
+        alphaBar.ClipsDescendants = true
+        for x = 0, 41 do
+            for y = 0, 1 do
+                if (x + y) % 2 == 0 then
+                    rounded("Frame", "Tile", alphaBar, x * 4, y * 4, 4, 4, Color3.fromRGB(145, 147, 153), 0)
+                end
+            end
+        end
+        local alphaColor = rounded("Frame", "Color", alphaBar, 0, 0, 166, 8, Color3.new(1, 1, 1), 0)
         local alphaGradient = Instance.new("UIGradient")
         alphaGradient.Transparency = NumberSequence.new(1, 0)
-        alphaGradient.Parent = alphaFill
-        local alphaKnob = rounded("Frame", "Knob", alphaTrack, 0, 4, 16, 12, "Text", 6)
-        alphaKnob.AnchorPoint = Vector2.new(0.5, 0.5)
-        alphaKnob.ZIndex = 2
-        local alphaScale = Instance.new("UIScale")
-        alphaScale.Parent = alphaKnob
-
-        local preview = rounded("Frame", "Preview", panel, padding, hexY, 26, 26, Color3.new(1, 1, 1), 6)
-        local previewStroke = Instance.new("UIStroke")
-        bindTheme(previewStroke, "Color", "Border")
-        previewStroke.Parent = preview
-        local hexContainer = rounded("Frame", "Hex", panel, padding + 32, hexY, wheelSize - 32, 26, "Search", 6)
-        local hexInput = Instance.new("TextBox")
-        hexInput.Name = "HexInput"
-        hexInput.BackgroundTransparency = 1
-        hexInput.Position = UDim2.fromOffset(8, 0)
-        hexInput.Size = UDim2.new(1, -36, 1, 0)
-        setUIFont(hexInput)
-        hexInput.TextSize = 12
-        bindTheme(hexInput, "TextColor3", "Text")
-        hexInput.TextXAlignment = Enum.TextXAlignment.Left
-        hexInput.ClearTextOnFocus = false
-        hexInput.Parent = hexContainer
-        local copyButton = rounded("TextButton", "CopyHex", hexContainer, 0, 3, 22, 20, "Search", 4)
-        copyButton.Position = UDim2.new(1, -25, 0, 3)
-        local copyIcon = icon(copyButton, "copy", 4, 3, 14, "Muted")
-        animateButton(copyButton, "Search")
-
-        local fieldNames = alphaEnabled and { "R", "G", "B", "A" } or { "R", "G", "B" }
-        local fields = {}
-        local fieldGap = 6
-        local fieldWidth = (wheelSize - fieldGap * (#fieldNames - 1)) / #fieldNames
-        for index, name in ipairs(fieldNames) do
-            local container =
-                rounded("Frame", name, panel, padding + (index - 1) * (fieldWidth + fieldGap), fieldsY, fieldWidth, 26, "Search", 6)
-            local caption = label(container, name, 11)
-            bindTheme(caption, "TextColor3", "Muted")
-            caption.Position = UDim2.fromOffset(7, 0)
-            caption.Size = UDim2.new(0, 10, 1, 0)
-            local box = Instance.new("TextBox")
-            box.Name = "Value"
-            box.BackgroundTransparency = 1
-            box.Position = UDim2.fromOffset(16, 0)
-            box.Size = UDim2.new(1, -22, 1, 0)
-            box.ClearTextOnFocus = false
-            setUIFont(box)
-            box.TextSize = 12
-            bindTheme(box, "TextColor3", "Text")
-            box.TextXAlignment = Enum.TextXAlignment.Right
-            box.Parent = container
-            fields[name] = box
-        end
-
-        local thumbScales = { Hue = hueScale, Square = markerScale, Opacity = alphaScale }
+        alphaGradient.Parent = alphaColor
+        local alphaKnob, alphaCore, alphaScale = makePickerThumb(alphaHit, "Knob", 7, 11)
+        local markerScale = Instance.new("UIScale")
+        markerScale.Parent = marker
+        local thumbScales = { Hue = hueScale, Opacity = alphaScale, Square = markerScale }
         local hoverPart
         local feedbackAnimations = {}
         local function feedback()
@@ -1227,47 +1285,38 @@ function Library:CreateWindow(config)
                     tween(item, { Scale = pressed and 1.2 or (hoverPart == name and 1.1 or 1) }, 0.12)
             end
         end
-        local function wheelPoint(position)
-            local factor = math.max(0.01, wheel.AbsoluteSize.X / wheelSize)
-            local origin = wheel.AbsolutePosition + wheel.AbsoluteSize / 2
-            return (position.X - origin.X) / factor, (position.Y - origin.Y) / factor
-        end
-        local function partAt(position)
-            local dx, dy = wheelPoint(position)
-            local half = squareSize / 2 + 4
-            if math.abs(dx) <= half and math.abs(dy) <= half then return "Square" end
-            local radius = math.sqrt(dx * dx + dy * dy)
-            if radius >= hueRadius - 16 and radius <= hueRadius + 14 then return "Hue" end
-        end
-        local function setHover(part)
-            if part == hoverPart then return end
-            hoverPart = part
-            feedback()
-        end
-        local function mouseLocation()
-            return UserInputService:GetMouseLocation() - game:GetService("GuiService"):GetGuiInset()
-        end
-        wheel.MouseMoved:Connect(function() setHover(partAt(mouseLocation())) end)
-        wheel.MouseLeave:Connect(function() setHover(nil) end)
-        alphaHit.MouseEnter:Connect(function() setHover("Opacity") end)
-        alphaHit.MouseLeave:Connect(function() setHover(nil) end)
-
-        -- Roblox has no conic gradient and rotated frames render without anti-aliasing, so the
-        -- hue ring is a dense chain of overlapping round dots (anti-aliased corners, smooth edge).
-        local built = false
-        local function build()
-            if built then return end
-            built = true
-            local count = math.ceil(2 * math.pi * hueRadius / 2)
-            for index = 0, count - 1 do
-                local t = index / count
-                local dot = rounded("Frame", "Hue", rings, 0, 0, hueThickness, hueThickness, Color3.fromHSV(t, 1, 1), 0)
-                dot.AnchorPoint = Vector2.new(0.5, 0.5)
-                dot.Position = polar(t * 360, hueRadius)
-                dot:FindFirstChildOfClass("UICorner").CornerRadius = UDim.new(0.5, 0)
-            end
+        for name, hit in pairs({ Hue = hueHit, Opacity = alphaHit, Square = square }) do
+            hit.MouseEnter:Connect(function()
+                hoverPart = name
+                feedback()
+            end)
+            hit.MouseLeave:Connect(function()
+                if hoverPart == name then hoverPart = nil end
+                feedback()
+            end)
         end
 
+        local hexContainer = rounded("Frame", "Hex", panel, 14, 189, 166, 30, "Search", 5)
+        if options.Alpha == false then
+            alphaHit.Visible = false
+            hexContainer.Position = UDim2.fromOffset(14, 162)
+            pickerHeight = 203
+            panel.Size = UDim2.fromOffset(pickerWidth, pickerHeight)
+        end
+        local hexInput = Instance.new("TextBox")
+        hexInput.Name = "RGBA"
+        hexInput.BackgroundTransparency = 1
+        hexInput.Position = UDim2.fromOffset(8, 0)
+        hexInput.Size = UDim2.new(1, -36, 1, 0)
+        setUIFont(hexInput)
+        hexInput.TextSize = 12
+        bindTheme(hexInput, "TextColor3", "Text")
+        hexInput.TextXAlignment = Enum.TextXAlignment.Left
+        hexInput.ClearTextOnFocus = false
+        hexInput.Parent = hexContainer
+        local copyButton = rounded("TextButton", "CopyHex", hexContainer, 139, 4, 24, 23, "Search", 4)
+        local copyIcon = icon(copyButton, "copy", 5, 4, 14, "Muted")
+        animateButton(copyButton, "Search")
         local hexValue = ""
         local function refresh(fire)
             local color = Color3.fromHSV(hue, saturation, brightness)
@@ -1275,39 +1324,29 @@ function Library:CreateWindow(config)
             picker.Transparency = 1 - opacity
             swatch.BackgroundColor3 = color
             swatch.BackgroundTransparency = 0
-            local pure = Color3.fromHSV(hue, 1, 1)
-            hueKnob.Position = polar(hue * 360, hueRadius)
-            hueCore.BackgroundColor3 = pure
-            saturationGradient.Color = ColorSequence.new(Color3.new(1, 1, 1), pure)
             marker.Position = UDim2.fromScale(saturation, 1 - brightness)
-            markerCore.BackgroundColor3 = color
-            alphaFill.BackgroundColor3 = color
-            alphaKnob.Position = UDim2.new(opacity, 0, 0, 4)
-            preview.BackgroundColor3 = color
-            preview.BackgroundTransparency = (1 - opacity) * 0.85
-            local channels = {
-                R = math.floor(color.R * 255 + 0.5),
-                G = math.floor(color.G * 255 + 0.5),
-                B = math.floor(color.B * 255 + 0.5),
-            }
-            hexValue = string.format("%02X%02X%02X", channels.R, channels.G, channels.B)
-            if alphaEnabled and opacity < 1 then
-                hexValue = hexValue .. string.format("%02X", math.floor(opacity * 255 + 0.5))
-            end
-            if not hexInput:IsFocused() then hexInput.Text = "#" .. hexValue end
-            for name, box in pairs(fields) do
-                if not box:IsFocused() then
-                    box.Text = name == "A" and string.format("%d%%", math.floor(opacity * 100 + 0.5))
-                        or tostring(channels[name])
-                end
-            end
+            saturationGradient.Color = ColorSequence.new(Color3.new(1, 1, 1), Color3.fromHSV(hue, 1, 1))
+            hueCore.BackgroundColor3 = Color3.fromHSV(hue, 1, 1)
+            hueKnob.Position = UDim2.new(0.5, 0, 0, 7 + hue * 132)
+            alphaCore.BackgroundColor3 = color
+            alphaGradient.Color = ColorSequence.new(color, color)
+            alphaKnob.Position = UDim2.fromOffset(7 + opacity * 152, 11)
+            hexValue = string.format(
+                "%02X%02X%02X%02X",
+                math.floor(color.R * 255 + 0.5),
+                math.floor(color.G * 255 + 0.5),
+                math.floor(color.B * 255 + 0.5),
+                math.floor(opacity * 255 + 0.5)
+            )
+            if options.Alpha == false then hexValue = hexValue:sub(1, 6) end
+            if not hexInput:IsFocused() then hexInput.Text = hexValue end
             if fire and options.Callback then options.Callback(color, picker.Transparency) end
         end
         function picker:Set(color, transparency, silent)
             assert(typeof(color) == "Color3", "Color picker expects Color3")
             hue, saturation, brightness = color:ToHSV()
             if transparency ~= nil then opacity = 1 - math.clamp(transparency, 0, 1) end
-            if not alphaEnabled then opacity = 1 end
+            if options.Alpha == false then opacity = 1 end
             refresh(not silent)
         end
         local function beginPick(input, part, update)
@@ -1322,24 +1361,31 @@ function Library:CreateWindow(config)
                 update(input.Position)
             end
         end
-        wheel.InputBegan:Connect(function(input)
-            local part = partAt(input.Position)
-            if not part then return end
-            beginPick(input, part, function(position)
-                local dx, dy = wheelPoint(position)
-                if part == "Hue" then
-                    hue = (math.deg(math.atan2(-dy, dx)) / 360) % 1
-                else
-                    saturation = math.clamp(dx / squareSize + 0.5, 0, 1)
-                    brightness = 1 - math.clamp(dy / squareSize + 0.5, 0, 1)
-                end
+        square.InputBegan:Connect(function(input)
+            beginPick(input, "Square", function(position)
+                saturation =
+                    math.clamp((position.X - square.AbsolutePosition.X) / math.max(1, square.AbsoluteSize.X), 0, 1)
+                brightness = 1
+                    - math.clamp((position.Y - square.AbsolutePosition.Y) / math.max(1, square.AbsoluteSize.Y), 0, 1)
+                refresh(true)
+            end)
+        end)
+        hueHit.InputBegan:Connect(function(input)
+            beginPick(input, "Hue", function(position)
+                hue = math.clamp(
+                    (position.Y - hueBar.AbsolutePosition.Y - 7 * panelScale.Scale)
+                        / math.max(1, 132 * panelScale.Scale),
+                    0,
+                    1
+                )
                 refresh(true)
             end)
         end)
         alphaHit.InputBegan:Connect(function(input)
             beginPick(input, "Opacity", function(position)
                 opacity = math.clamp(
-                    (position.X - alphaTrack.AbsolutePosition.X) / math.max(1, alphaTrack.AbsoluteSize.X),
+                    (position.X - alphaBar.AbsolutePosition.X - 7 * panelScale.Scale)
+                        / math.max(1, 152 * panelScale.Scale),
                     0,
                     1
                 )
@@ -1356,33 +1402,14 @@ function Library:CreateWindow(config)
                 )
                 picker:Set(color, #hex == 8 and (1 - tonumber(hex:sub(7, 8), 16) / 255) or picker.Transparency)
             end
-            hexInput.Text = "#" .. hexValue
+            hexInput.Text = hexValue
         end)
-        for name, box in pairs(fields) do
-            box.FocusLost:Connect(function()
-                local number = tonumber((box.Text:gsub("[%s%%]", "")))
-                if number then
-                    if name == "A" then
-                        picker:Set(picker.Value, 1 - math.clamp(number, 0, 100) / 100)
-                    else
-                        local channels = {
-                            R = math.floor(picker.Value.R * 255 + 0.5),
-                            G = math.floor(picker.Value.G * 255 + 0.5),
-                            B = math.floor(picker.Value.B * 255 + 0.5),
-                        }
-                        channels[name] = math.clamp(math.floor(number + 0.5), 0, 255)
-                        picker:Set(Color3.fromRGB(channels.R, channels.G, channels.B), picker.Transparency)
-                    end
-                end
-                refresh(false)
-            end)
-        end
         copyButton.Activated:Connect(function()
             local copied = type(setclipboard) == "function" and pcall(setclipboard, hexValue)
             if copied then
                 bindTheme(copyIcon, "ImageColor3", "Accent")
                 task.delay(0.6, function()
-                    if uiAlive and copyIcon.Parent then bindTheme(copyIcon, "ImageColor3", "Muted") end
+                    if uiAlive and copyIcon.Parent then copyIcon.ImageColor3 = Theme.Muted end
                 end)
             else
                 hexInput:CaptureFocus()
@@ -1412,7 +1439,6 @@ function Library:CreateWindow(config)
         end
         function picker:Open()
             if not canInteract(owner) then return end
-            build()
             cancelKeyCapture()
             closeDropdown(true)
             self.Revision = self.Revision + 1
@@ -3867,6 +3893,7 @@ function Library:CreateWindow(config)
     dockHost.Parent = viewport
     local dockScale = Instance.new("UIScale")
     dockScale.Parent = dockHost
+    local dockGlow = createGlow(dockHost, 22, 0.3)
     local dockGlass = rounded("Frame", "DockGlass", dockHost, 0, 0, 0, 0, "Background", 22)
     dockGlass.Size = UDim2.fromScale(1, 1)
     dockGlass.BackgroundTransparency = 0.08
@@ -3898,6 +3925,7 @@ function Library:CreateWindow(config)
         dockScale.Scale = dockFitScale * (0.94 + 0.06 * dockProgress)
         dockGlass.BackgroundTransparency = (0.08 + (1 - progress) * 0.22) * glassOpacityFactor
         dockRim.Transparency = 0.92 + (1 - progress) * 0.08
+        setGlowStrength(dockGlow, 0.3 * progress)
         local reveal = dockAutoHide and (1 - progress) or 0
         dockReveal.Visible = reveal > 0.005
         dockReveal.Interactable = not dockExpanded and reveal > 0.2
@@ -3968,7 +3996,7 @@ function Library:CreateWindow(config)
         -- Reversing mid-flight keeps the current velocity, so rapid toggles never snap.
         local home, savedPosition
         local progress, velocity, target = 1, 0, 1
-        local minimumScale, hostPadding = 0.14, 12
+        local minimumScale, hostPadding = 0.14, windowGlowSpread + 2
         local function landingPoint()
             local center = 14 + 32 * dockFitScale
             return Vector2.new(viewport.AbsoluteSize.X / 2, viewport.AbsoluteSize.Y - center)
@@ -4280,7 +4308,7 @@ function Library:CreateWindow(config)
         track(viewport:GetPropertyChangedSignal("AbsoluteSize"):Connect(cancelWindowResize))
     end
 
-    local autoHideControl, keybindListControl, settingsTab
+    local autoHideControl, keybindListControl, settingsTab, notificationPositionControl
     menuKeybind = { Keybind = config.MenuKey or Enum.KeyCode.RightShift, Modifiers = {} }
     function menuKeybind:RefreshKeybind() end
     function menuKeybind:SetModifiers(value)
@@ -4356,6 +4384,7 @@ function Library:CreateWindow(config)
         assert(typeof(config.Size) == "Vector2", "Window Size expects Vector2")
         setWindowSize(config.Size)
     end
+    if config.NotificationPosition then setNotificationPosition(config.NotificationPosition) end
     local title = label(header, config.Title or "Viz", 13)
     setUIFont(title, true)
     title.Position = UDim2.fromOffset(54, 0)
@@ -4428,6 +4457,13 @@ function Library:CreateWindow(config)
     function window:SetAutoHide(value) applyAutoHide(value == true) end
     function window:SetTitle(text) title.Text = tostring(text) end
     function window:Notify(options) return notify(options) end
+    function window:SetNotificationPosition(position)
+        setNotificationPosition(position)
+        if notificationPositionControl and notificationPositionControl.Value ~= position then
+            notificationPositionControl:Set(position, true)
+        end
+    end
+    function window:GetNotificationPosition() return notificationPosition end
     function window:Dialog(options) return showDialog(options) end
     function window:AddOverlay(options) return addOverlay(options) end
     function window:AddTooltip(object, text, disabledText) return addTooltip(object, text, disabledText) end
@@ -4445,6 +4481,15 @@ function Library:CreateWindow(config)
         menuKeybind = group:AddKeybind({ Name = "Menu keybind", Default = previous.Keybind, NoSave = true })
         menuKeybind:SetModifiers(previous.Modifiers)
         self.MenuKeybind = menuKeybind
+        notificationPositionControl = group:AddDropdown({
+            Name = "Notifications",
+            Options = { "TopLeft", "Top", "TopRight", "BottomLeft", "Bottom", "BottomRight" },
+            Default = notificationPosition,
+            NoSave = true,
+            Callback = function(value)
+                if value then setNotificationPosition(value) end
+            end,
+        })
         return settingsTab
     end
     function window:AddStyleControls(section)
