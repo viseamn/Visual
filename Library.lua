@@ -4330,30 +4330,34 @@ function Library:CreateWindow(config)
     end
     do
         -- Corner grip: an arc floating just outside the window's rounded corner, concentric with it.
-        -- It is the stroked corner of a larger rounded frame whose corner sits gripGap px beyond the
-        -- window's; the hit area clips it so only the curve shows, and a gradient fades the tails.
-        local gripGap, gripMargin = 5, 6
+        -- It is a stroked circle centred on the corner's curve centre, with a diagonal gradient that hides
+        -- everything but the bottom-right quarter. No clipping is involved (UIStroke and ClipsDescendants
+        -- do not combine reliably), so the arc always lands outside the window edge.
+        local gripGap = 5
+        local cornerRadius = rootCorner.CornerRadius.Offset
+        local ringRadius = cornerRadius + gripGap
         resizeHandle = Instance.new("TextButton")
         resizeHandle.Name = "ResizeWindow"
         resizeHandle.Text = ""
         resizeHandle.AutoButtonColor = false
         resizeHandle.BackgroundTransparency = 1
         resizeHandle.AnchorPoint = Vector2.new(1, 1)
-        resizeHandle.Position = UDim2.new(1, gripGap + gripMargin, 1, gripGap + gripMargin)
-        resizeHandle.Size = UDim2.fromOffset(36, 36)
-        resizeHandle.ClipsDescendants = true
+        resizeHandle.Position = UDim2.new(1, gripGap + 8, 1, gripGap + 8)
+        resizeHandle.Size = UDim2.fromOffset(38, 38)
         resizeHandle.ZIndex = 10
         resizeHandle.Parent = root
         local arc = Instance.new("Frame")
-        arc.Name = "Grip"
-        arc.AnchorPoint = Vector2.new(1, 1)
-        arc.Position = UDim2.new(1, -gripMargin, 1, -gripMargin)
-        arc.Size = UDim2.fromOffset(64, 64)
+        arc.Name = "ResizeGrip"
+        arc.AnchorPoint = Vector2.new(0.5, 0.5)
+        arc.Position = UDim2.new(1, -cornerRadius, 1, -cornerRadius)
+        arc.Size = UDim2.fromOffset(ringRadius * 2, ringRadius * 2)
         arc.BackgroundTransparency = 1
+        arc.Active = false
         arc.ZIndex = 10
-        arc.Parent = resizeHandle
+        arc:SetAttribute("PassInput", true)
+        arc.Parent = root
         local arcCorner = Instance.new("UICorner")
-        arcCorner.CornerRadius = UDim.new(0, rootCorner.CornerRadius.Offset + gripGap)
+        arcCorner.CornerRadius = UDim.new(0.5, 0)
         arcCorner.Parent = arc
         local arcStroke = Instance.new("UIStroke")
         arcStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
@@ -4361,12 +4365,13 @@ function Library:CreateWindow(config)
         arcStroke.Transparency = 0.45
         bindTheme(arcStroke, "Color", "Text")
         arcStroke.Parent = arc
+        -- Along the 45° diagonal the quarter arc spans roughly 0.75 (its ends) to 0.85 (its middle).
         local arcFade = Instance.new("UIGradient")
         arcFade.Rotation = 45
         arcFade.Transparency = NumberSequence.new({
             NumberSequenceKeypoint.new(0, 1),
-            NumberSequenceKeypoint.new(0.74, 1),
-            NumberSequenceKeypoint.new(0.84, 0),
+            NumberSequenceKeypoint.new(0.73, 1),
+            NumberSequenceKeypoint.new(0.8, 0),
             NumberSequenceKeypoint.new(1, 0),
         })
         arcFade.Parent = arcStroke
