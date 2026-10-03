@@ -1093,9 +1093,9 @@ function Library:CreateWindow(config)
         local pickerWidth, pickerHeight = 204, 258
         local wheelSize = 184
         local center = wheelSize / 2
-        local hueRadius, hueThickness = 84, 10
-        local arcRadius, arcThickness = 68, 6
-        local alphaRadius, alphaThickness = 54, 6
+        local hueRadius, hueThickness = 84, 9
+        local arcRadius, arcThickness = 69, 5
+        local alphaRadius, alphaThickness = 56, 5
         -- Arcs are { start angle, signed sweep } in degrees, counter-clockwise from the right.
         -- Saturation climbs the left side, brightness climbs the right, opacity wraps the inside.
         local saturationArc = { 235, -110 }
@@ -1145,30 +1145,26 @@ function Library:CreateWindow(config)
             if delta <= span then return delta / span end
             return (delta - span) < (360 - delta) and 1 or 0
         end
-        -- Roblox has no arc primitive or conic gradient, so rings are short tangent segments.
-        local function buildArc(name, arc, radius, thickness, count, caps)
+        -- Roblox has no arc primitive or conic gradient, and rotated frames render without
+        -- anti-aliasing. Rings are therefore a dense chain of overlapping round dots: corners are
+        -- anti-aliased, edges stay smooth (scallop < 0.2px at 2px spacing) and arc ends come out round.
+        local function buildArc(name, arc, radius, thickness)
             local segments = {}
-            local length = radius * math.rad(math.abs(arc[2]) / count) + 1.5
-            for index = 0, count - 1 do
-                local t = (index + 0.5) / count
-                local angle = arcAngle(arc, t)
-                local segment = Instance.new("Frame")
-                segment.Name = name
-                segment.BorderSizePixel = 0
-                segment.AnchorPoint = Vector2.new(0.5, 0.5)
-                segment.Size = UDim2.fromOffset(length, thickness)
-                segment.Position = polar(angle, radius)
-                segment.Rotation = 90 - angle
-                segment.Parent = rings
-                table.insert(segments, { Frame = segment, T = t })
-            end
-            if caps then
-                for _, t in ipairs({ 0, 1 }) do
-                    local cap = rounded("Frame", name .. "Cap", rings, 0, 0, thickness, thickness, Color3.new(1, 1, 1), thickness / 2)
-                    cap.AnchorPoint = Vector2.new(0.5, 0.5)
-                    cap.Position = polar(arcAngle(arc, t), radius)
-                    table.insert(segments, { Frame = cap, T = t })
-                end
+            local closed = math.abs(arc[2]) >= 360
+            local count = math.max(2, math.ceil(radius * math.rad(math.abs(arc[2])) / 2))
+            for index = 0, closed and count - 1 or count do
+                local t = index / count
+                local dot = Instance.new("Frame")
+                dot.Name = name
+                dot.BorderSizePixel = 0
+                dot.AnchorPoint = Vector2.new(0.5, 0.5)
+                dot.Size = UDim2.fromOffset(thickness, thickness)
+                dot.Position = polar(arcAngle(arc, t), radius)
+                local corner = Instance.new("UICorner")
+                corner.CornerRadius = UDim.new(0.5, 0)
+                corner.Parent = dot
+                dot.Parent = rings
+                table.insert(segments, { Frame = dot, T = t })
             end
             return segments
         end
@@ -1194,9 +1190,9 @@ function Library:CreateWindow(config)
         local alphaKnob, alphaCore, alphaScale = makeThumb("OpacityKnob", 12)
         alphaKnob.Visible = alphaEnabled
 
-        local preview = rounded("Frame", "Preview", wheel, 0, 0, 30, 30, Color3.new(1, 1, 1), 15)
+        local preview = rounded("Frame", "Preview", wheel, 0, 0, 38, 38, Color3.new(1, 1, 1), 19)
         preview.AnchorPoint = Vector2.new(0.5, 0.5)
-        preview.Position = UDim2.fromOffset(center, center - 16)
+        preview.Position = UDim2.fromOffset(center, center - 10)
         preview.ZIndex = 3
         local previewStroke = Instance.new("UIStroke")
         bindTheme(previewStroke, "Color", "Border")
@@ -1205,8 +1201,8 @@ function Library:CreateWindow(config)
         hexInput.Name = "Hex"
         hexInput.BackgroundTransparency = 1
         hexInput.AnchorPoint = Vector2.new(0.5, 0.5)
-        hexInput.Position = UDim2.fromOffset(center, center + 8)
-        hexInput.Size = UDim2.fromOffset(72, 16)
+        hexInput.Position = UDim2.fromOffset(center - 8, center + 22)
+        hexInput.Size = UDim2.fromOffset(62, 16)
         hexInput.ZIndex = 3
         setUIFont(hexInput)
         hexInput.TextSize = 12
@@ -1214,11 +1210,11 @@ function Library:CreateWindow(config)
         hexInput.TextXAlignment = Enum.TextXAlignment.Center
         hexInput.ClearTextOnFocus = false
         hexInput.Parent = wheel
-        local copyButton = rounded("TextButton", "CopyHex", wheel, 0, 0, 20, 20, "Background", 5)
+        local copyButton = rounded("TextButton", "CopyHex", wheel, 0, 0, 18, 18, "Background", 5)
         copyButton.AnchorPoint = Vector2.new(0.5, 0.5)
-        copyButton.Position = UDim2.fromOffset(center, center + 28)
+        copyButton.Position = UDim2.fromOffset(center + 30, center + 22)
         copyButton.ZIndex = 3
-        local copyIcon = icon(copyButton, "copy", 3, 3, 14, "Muted")
+        local copyIcon = icon(copyButton, "copy", 3, 3, 12, "Muted")
         copyIcon.ZIndex = 4
         animateButton(copyButton, "Background")
 
@@ -1286,25 +1282,21 @@ function Library:CreateWindow(config)
             for _, item in ipairs(brightnessSegments) do
                 item.Frame.BackgroundColor3 = Color3.fromHSV(hue, saturation, item.T)
             end
+            -- Opacity is simulated by blending toward the panel colour, so overlapping dots never stack.
             for _, item in ipairs(alphaSegments) do
-                item.Frame.BackgroundColor3 = color
+                item.Frame.BackgroundColor3 = Theme.Background:Lerp(color, 0.1 + 0.9 * item.T)
             end
         end
         -- Segments are built on first open so pickers that are never opened stay cheap.
         local function build()
             if built then return end
             built = true
-            for _, item in ipairs(buildArc("Hue", { 0, 360 }, hueRadius, hueThickness, 90, false)) do
+            for _, item in ipairs(buildArc("Hue", { 0, 360 }, hueRadius, hueThickness)) do
                 item.Frame.BackgroundColor3 = Color3.fromHSV(item.T % 1, 1, 1)
             end
-            saturationSegments = buildArc("Saturation", saturationArc, arcRadius, arcThickness, 36, true)
-            brightnessSegments = buildArc("Brightness", brightnessArc, arcRadius, arcThickness, 36, true)
-            if alphaEnabled then
-                alphaSegments = buildArc("Opacity", alphaArc, alphaRadius, alphaThickness, 80, true)
-                for _, item in ipairs(alphaSegments) do
-                    item.Frame.BackgroundTransparency = 0.92 - 0.92 * item.T
-                end
-            end
+            saturationSegments = buildArc("Saturation", saturationArc, arcRadius, arcThickness)
+            brightnessSegments = buildArc("Brightness", brightnessArc, arcRadius, arcThickness)
+            if alphaEnabled then alphaSegments = buildArc("Opacity", alphaArc, alphaRadius, alphaThickness) end
             paintArcs(picker.Value)
         end
 
