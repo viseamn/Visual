@@ -86,6 +86,10 @@ function Library:CreateWindow(config)
         config.Layout == nil or layoutEdges[config.Layout],
         "Layout must be Bottom bar, Top bar, Left bar or Right bar"
     )
+    assert(
+        config.SearchStyle == nil or config.SearchStyle == "Bar" or config.SearchStyle == "Header",
+        "SearchStyle must be Bar or Header"
+    )
     if config.Size then
         assert(
             typeof(config.Size) == "Vector2"
@@ -380,6 +384,7 @@ function Library:CreateWindow(config)
     glassSurface(root, 0.12)
 
     local layoutStyle = "Bottom bar"
+    local searchStyle = "Bar"
     local dockEdge = "Bottom"
     local uiShown = true
     local windowTransitioning = false
@@ -3926,9 +3931,11 @@ function Library:CreateWindow(config)
         )
         if ok and profile.Parent then profile.Image = thumbnail end
     end)
-    -- Taskbar-style search pill at the start of the bar, mirrored with the header search. A side bar has no
-    -- room for a field, so there it shrinks to a round button that opens the window and focuses the search.
+    -- Taskbar-style search pill at the start of the bar, mirrored with the header search (only one of the
+    -- two is shown, see applySearchStyle). A side bar has no room for a field, so there it is a round button
+    -- that slides out into a pill while typing.
     local dockSearch = rounded("TextButton", "DockSearch", sidebar, 12, 14, 148, 36, "Search", 18)
+    local layoutDockSearch
     do
         dockSearch.BackgroundTransparency = 0.2
         dockSearch:FindFirstChildOfClass("UICorner").CornerRadius = UDim.new(0.5, 0)
@@ -3939,6 +3946,10 @@ function Library:CreateWindow(config)
         rim.Parent = dockSearch
         local glyph = icon(dockSearch, "search", 12, 10, 16, "Muted")
         glyph.Name = "Glyph"
+        -- Matches the divider before the profile, so the tabs sit between two dividers.
+        local divider = rounded("Frame", "Divider", dockSearch, 0, 0, 1, 32, "Text", 1)
+        divider.BackgroundTransparency = 0.9
+        local expanded = false
         local box = rounded("TextBox", "Box", dockSearch, 36, 0, 0, 36, "Search", 0)
         box.Size = UDim2.new(1, -46, 1, 0)
         box.BackgroundTransparency = 1
@@ -3957,7 +3968,43 @@ function Library:CreateWindow(config)
             tween(dockSearch, { BackgroundColor3 = (hovering or active) and "Hover" or "Search" }, 0.16)
             tween(rim, { Color = active and "Accent" or "Text" }, 0.16)
             motion(rim, { Transparency = active and 0.35 or 0.9 }, 0.16)
-            tween(glyph, { ImageColor3 = active and "Accent" or "Muted" }, 0.16)
+            -- The glyph stays lit while a query is filtering, which a collapsed side-bar button otherwise hides.
+            tween(glyph, { ImageColor3 = (active or box.Text ~= "") and "Accent" or "Muted" }, 0.16)
+        end
+        layoutDockSearch = function(animate)
+            local vertical = dockEdge == "Left" or dockEdge == "Right"
+            local size
+            if vertical then
+                local right = dockEdge == "Right"
+                -- Grows inward from the side bar, over the screen, so it needs a solid background.
+                dockSearch.AnchorPoint = Vector2.new(right and 1 or 0, 0)
+                dockSearch.Position = UDim2.new(right and 1 or 0, right and -10 or 10, 0, 10)
+                dockSearch.BackgroundTransparency = expanded and 0 or 0.2
+                size = UDim2.fromOffset(expanded and 220 or 44, 44)
+                glyph.Position = UDim2.fromOffset(14, 14)
+                box.Position = UDim2.fromOffset(40, 0)
+                box.Size = UDim2.new(1, -50, 1, 0)
+                divider.AnchorPoint = Vector2.new(0.5, 0)
+                divider.Position = UDim2.new(right and 1 or 0, right and -22 or 22, 1, 10)
+                divider.Size = UDim2.fromOffset(32, 1)
+            else
+                dockSearch.AnchorPoint = Vector2.new(0, 0.5)
+                dockSearch.Position = UDim2.new(0, 12, 0.5, 0)
+                dockSearch.BackgroundTransparency = 0.2
+                size = UDim2.fromOffset(148, 36)
+                glyph.Position = UDim2.fromOffset(12, 10)
+                box.Position = UDim2.fromOffset(36, 0)
+                box.Size = UDim2.new(1, -46, 1, 0)
+                divider.AnchorPoint = Vector2.new(0, 0.5)
+                divider.Position = UDim2.new(1, 10, 0.5, 0)
+                divider.Size = UDim2.fromOffset(1, 32)
+            end
+            box.Visible = not vertical or expanded
+            if animate then
+                tween(dockSearch, { Size = size }, 0.2)
+            else
+                dockSearch.Size = size
+            end
         end
         dockSearch.MouseEnter:Connect(function()
             hovering = true
@@ -3978,20 +4025,32 @@ function Library:CreateWindow(config)
             end
             refresh()
         end)
-        box.FocusLost:Connect(refresh)
+        box.FocusLost:Connect(function()
+            if expanded then
+                expanded = false
+                layoutDockSearch(true)
+            end
+            refresh()
+        end)
         dockSearch.Activated:Connect(function()
             if dialogOpen then return end
             if box.Visible then
                 box:CaptureFocus()
                 return
             end
+            -- Collapsed side-bar button: open the window first (that drops focus), then slide out and type.
             if not uiShown then setUIVisible(true) end
+            expanded = true
+            box.Visible = true
             task.defer(function()
-                if uiAlive then globalSearch:CaptureFocus() end
+                if not uiAlive then return end
+                box:CaptureFocus()
+                layoutDockSearch(true)
             end)
         end)
         box:GetPropertyChangedSignal("Text"):Connect(function()
             if globalSearch.Text ~= box.Text then globalSearch.Text = box.Text end
+            refresh()
         end)
         globalSearch:GetPropertyChangedSignal("Text"):Connect(function()
             if box.Text ~= globalSearch.Text then box.Text = globalSearch.Text end
@@ -4113,7 +4172,7 @@ function Library:CreateWindow(config)
         end
         -- The bar is laid out along its edge: search, tabs, then a divider and the profile at the far end.
         local vertical = dockVertical()
-        local searchSpan = vertical and 54 or 160
+        local searchSpan = searchStyle ~= "Bar" and 0 or vertical and 58 or 164
         local available = vertical and viewport.AbsoluteSize.Y or viewport.AbsoluteSize.X
         local length = math.min(76 + searchSpan + #tabs * 52, math.max(128 + searchSpan, available - 24))
         dockHost.Size = vertical and UDim2.fromOffset(64, length) or UDim2.fromOffset(length, 64)
@@ -4121,12 +4180,9 @@ function Library:CreateWindow(config)
         dockReveal.Size = vertical and UDim2.fromOffset(20, 104) or UDim2.fromOffset(104, 20)
         renderDock()
         sidebar.Size = UDim2.fromScale(1, 1)
-        dockSearch.Box.Visible = not vertical
+        dockSearch.Visible = searchStyle == "Bar"
+        layoutDockSearch()
         if vertical then
-            dockSearch.AnchorPoint = Vector2.new(0.5, 0)
-            dockSearch.Position = UDim2.new(0.5, 0, 0, 10)
-            dockSearch.Size = UDim2.fromOffset(44, 44)
-            dockSearch.Glyph.Position = UDim2.fromOffset(14, 14)
             navigationGroup.Position = UDim2.fromOffset(6, 8 + searchSpan)
             navigationGroup.Size = UDim2.new(0, 52, 1, -72 - searchSpan)
             profile.AnchorPoint = Vector2.new(0.5, 1)
@@ -4134,10 +4190,6 @@ function Library:CreateWindow(config)
             dockDivider.Size = UDim2.fromOffset(32, 1)
             dockDivider.Position = UDim2.new(0, 16, 1, -62)
         else
-            dockSearch.AnchorPoint = Vector2.new(0, 0.5)
-            dockSearch.Position = UDim2.new(0, 12, 0.5, 0)
-            dockSearch.Size = UDim2.fromOffset(148, 36)
-            dockSearch.Glyph.Position = UDim2.fromOffset(12, 10)
             navigationGroup.Position = UDim2.fromOffset(8 + searchSpan, 6)
             navigationGroup.Size = UDim2.new(1, -72 - searchSpan, 0, 52)
             profile.AnchorPoint = Vector2.new(1, 0.5)
@@ -4587,6 +4639,7 @@ function Library:CreateWindow(config)
     end
 
     local autoHideControl, keybindListControl, settingsTab, notificationPositionControl, layoutControl
+    local searchStyleControl
     menuKeybind = { Keybind = config.MenuKey or Enum.KeyCode.RightShift, Modifiers = {} }
     function menuKeybind:RefreshKeybind() end
     function menuKeybind:SetModifiers(value)
@@ -4628,6 +4681,17 @@ function Library:CreateWindow(config)
         setLayoutStyle(layoutEdges[value] and value or "Bottom bar")
         if layoutControl and layoutControl.Value ~= layoutStyle then layoutControl:Set(layoutStyle, true) end
     end
+    -- One search field at a time: the taskbar pill in the bar, or the field in the window header.
+    local function applySearchStyle(value)
+        searchStyle = value == "Header" and "Header" or "Bar"
+        local focused = UserInputService:GetFocusedTextBox()
+        if focused and (focused == globalSearch or focused:IsDescendantOf(dockSearch)) then focused:ReleaseFocus() end
+        searchField.Visible = searchStyle == "Header"
+        refreshDockLayout()
+        if searchStyleControl and searchStyleControl.Value ~= searchStyle then
+            searchStyleControl:Set(searchStyle, true)
+        end
+    end
     local function applyAutoHide(value)
         setDockAutoHide(value)
         if autoHideControl then autoHideControl:Set(value, true) end
@@ -4643,6 +4707,14 @@ function Library:CreateWindow(config)
         function() return layoutStyle end,
         applyStyle,
         function(value) return value == "Normal" or layoutEdges[value] ~= nil end
+    )
+    registerControl(
+        "ui_search_style",
+        "Dropdown",
+        root,
+        function() return searchStyle end,
+        applySearchStyle,
+        function(value) return value == "Bar" or value == "Header" end
     )
     registerControl(
         "ui_dock_autohide",
@@ -4661,6 +4733,7 @@ function Library:CreateWindow(config)
         function(value) return type(value) == "boolean" end
     )
     applyStyle(config.Layout or "Bottom bar")
+    applySearchStyle(config.SearchStyle or "Bar")
     applyAutoHide(config.AutoHide == true)
     if config.Size then
         assert(typeof(config.Size) == "Vector2", "Window Size expects Vector2")
@@ -4736,6 +4809,11 @@ function Library:CreateWindow(config)
         applyStyle(value)
     end
     function window:GetStyle() return layoutStyle end
+    function window:SetSearchStyle(value)
+        assert(value == "Bar" or value == "Header", "Search style must be Bar or Header")
+        applySearchStyle(value)
+    end
+    function window:GetSearchStyle() return searchStyle end
     function window:SetAutoHide(value) applyAutoHide(value == true) end
     function window:SetTitle(text) title.Text = tostring(text) end
     function window:Notify(options) return notify(options) end
@@ -4783,6 +4861,15 @@ function Library:CreateWindow(config)
             -- Deferred: switching layouts closes open dropdowns, including this one mid-callback.
             Callback = function(value)
                 if value then task.defer(applyStyle, value) end
+            end,
+        })
+        searchStyleControl = section:AddDropdown({
+            Name = "Search bar",
+            Options = { "Bar", "Header" },
+            Default = searchStyle,
+            NoSave = true,
+            Callback = function(value)
+                if value then task.defer(applySearchStyle, value) end
             end,
         })
         autoHideControl = section:AddCheckbox({

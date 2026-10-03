@@ -67,7 +67,7 @@ Library.Options.Name.Text = "Player"
 
 Toggle, checkbox, slider, dropdown, color picker, and keybind return control objects. Input, button, label, and divider return Roblox instances. Controls with `Set` also expose `SetValue`. The keybind editor exposes `SetKeybind` and `SetModifiers`; it does not dispatch an action by itself. A toggle can dispatch through `Keybind = "F"`, `Mode = "Toggle"` or `"Hold"`, and `Modifiers = {Ctrl = true}`.
 
-Controls accept `Callback`, `NoSave`, `Disabled`, `Visible`, `Tooltip`, and `DisabledTooltip` where applicable. Use `control:SetDisabled(true)` / `SetVisible(false)` for control objects, or `Group:SetControlDisabled(instance, true)` / `SetControlVisible(instance, false)` for returned instances.
+Controls accept `Callback`, `NoSave`, `Disabled`, and `Visible` where applicable. There are no hover tooltips; a `Tooltip` string is still matched by search. Use `control:SetDisabled(true)` / `SetVisible(false)` for control objects, or `Group:SetControlDisabled(instance, true)` / `SetControlVisible(instance, false)` for returned instances.
 
 Groupboxes have `Detach`, `Attach`, `IsDetached`, `SetCollapsed`, and `ToggleCollapsed`. Drag the header to detach; release it inside the main window to attach again. `Group:AddTab("General")` creates a section supporting the same control constructors. `AddTextbox` aliases `AddInput`, and `AddDoubleSlider` aliases `AddRangeSlider`.
 
@@ -77,6 +77,7 @@ Groupboxes have `Detach`, `Attach`, `IsDetached`, `SetCollapsed`, and `ToggleCol
 Window:SetVisible(false)
 Window:Toggle()
 Window:SetStyle("Left bar") -- Bottom bar, Top bar, Left bar, Right bar
+Window:SetSearchStyle("Header") -- Bar (default) or Header
 Window:SetAutoHide(true)
 Window:SetSize(Vector2.new(700, 480))
 Window:SetSearch("speed")
@@ -87,9 +88,9 @@ Window:Dialog({Title = "Continue?", Content = "Confirm this action.", OnConfirm 
 Library:Unload()
 ```
 
-`CreateWindow` accepts `Title`, `Size` (`Vector2`), `Layout`, `MenuKey`, `AutoHide`, and `NotificationPosition` (default `BottomRight`). It replaces the previous window created by that library instance. `Layout` picks the screen edge for the tab bar: `Bottom bar` (default), `Top bar`, `Left bar` or `Right bar`; players can also change it from the "Bar position" dropdown in the theme Style tab. The menu key is RightShift. Create your tabs before loading a config. After replacing a window, bind managers again with `SetLibrary`.
+`CreateWindow` accepts `Title`, `Size` (`Vector2`), `Layout`, `SearchStyle`, `MenuKey`, `AutoHide`, and `NotificationPosition` (default `BottomRight`). `SearchStyle` shows one search field: `Bar` (default) puts a taskbar-style search pill in the bar, `Header` uses the field in the window header; players can switch it from the "Search bar" dropdown in the theme Style tab. It replaces the previous window created by that library instance. `Layout` picks the screen edge for the tab bar: `Bottom bar` (default), `Top bar`, `Left bar` or `Right bar`; players can also change it from the "Bar position" dropdown in the theme Style tab. The menu key is RightShift. Create your tabs before loading a config. After replacing a window, bind managers again with `SetLibrary`.
 
-Navigation uses the original bottom bar with icon buttons and a decorative user avatar. The avatar has no click action. The header uses the cloud logo and a wide search field. Interface contains the keybind controls; auto-hide is in Themes > Style. Quick settings and the user profile card are removed. Legacy config layout values are restored as Bottom bar. Theme controls are available in the Settings tab through ThemeManager. Corner radius, animation speed, and UI scale are fixed; the window still fits the viewport automatically. Group positions stay in the current session. Configs save control values, layout, menu key, navigation auto-hide, keybind list visibility, and theme.
+Navigation uses the original bottom bar with icon buttons between two dividers and a decorative user avatar. With `SearchStyle = "Bar"` a search pill sits before the tabs and reopens a hidden window when used; on a left or right bar it is a round button that slides out into a field while typing. The avatar has no click action. The header uses the cloud logo and a wide search field. Interface contains the keybind controls; auto-hide is in Themes > Style. Quick settings and the user profile card are removed. Legacy config layout values are restored as Bottom bar. Theme controls are available in the Settings tab through ThemeManager. Corner radius, animation speed, and UI scale are fixed; the window still fits the viewport automatically. Group positions stay in the current session. Configs save control values, layout, search style, menu key, navigation auto-hide, keybind list visibility, and theme.
 
 ## Config and theme API
 
