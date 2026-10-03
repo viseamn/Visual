@@ -76,17 +76,18 @@ Groupboxes have `Detach`, `Attach`, `IsDetached`, `SetCollapsed`, and `ToggleCol
 ```lua
 Window:SetVisible(false)
 Window:Toggle()
-Window:SetStyle("Bottom bar") -- the only supported layout
+Window:SetStyle("Left bar") -- Bottom bar, Top bar, Left bar, Right bar
 Window:SetAutoHide(true)
 Window:SetSize(Vector2.new(700, 480))
 Window:SetSearch("speed")
 Window:SetTitle("My UI")
 Window:Notify({Title = "Viz", Content = "Ready"})
+Window:SetNotificationPosition("TopRight") -- TopLeft, Top, TopRight, BottomLeft, Bottom, BottomRight
 Window:Dialog({Title = "Continue?", Content = "Confirm this action.", OnConfirm = function() end})
 Library:Unload()
 ```
 
-`CreateWindow` accepts `Title`, `Size` (`Vector2`), `Layout`, `MenuKey`, and `AutoHide`. It replaces the previous window created by that library instance. Bottom bar is the only supported layout; the menu key is RightShift. Create your tabs before loading a config. After replacing a window, bind managers again with `SetLibrary`.
+`CreateWindow` accepts `Title`, `Size` (`Vector2`), `Layout`, `MenuKey`, `AutoHide`, and `NotificationPosition` (default `BottomRight`). It replaces the previous window created by that library instance. `Layout` picks the screen edge for the tab bar: `Bottom bar` (default), `Top bar`, `Left bar` or `Right bar`; players can also change it from the "Bar position" dropdown in the theme Style tab. The menu key is RightShift. Create your tabs before loading a config. After replacing a window, bind managers again with `SetLibrary`.
 
 Navigation uses the original bottom bar with icon buttons and a decorative user avatar. The avatar has no click action. The header uses the cloud logo and a wide search field. Interface contains the keybind controls; auto-hide is in Themes > Style. Quick settings and the user profile card are removed. Legacy config layout values are restored as Bottom bar. Theme controls are available in the Settings tab through ThemeManager. Corner radius, animation speed, and UI scale are fixed; the window still fits the viewport automatically. Group positions stay in the current session. Configs save control values, layout, menu key, navigation auto-hide, keybind list visibility, and theme.
 

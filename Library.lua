@@ -74,11 +74,18 @@ Library._Storage = {
     Delete = deleteJSON,
 }
 
+-- Layout style -> the screen edge the tab bar docks to.
+local layoutEdges = { ["Bottom bar"] = "Bottom", ["Top bar"] = "Top", ["Left bar"] = "Left", ["Right bar"] = "Right" }
+local layoutStyles = { "Bottom bar", "Top bar", "Left bar", "Right bar" }
+
 function Library:CreateWindow(config)
     config = config or {}
     assert(type(config) == "table", "CreateWindow expects an options table")
     assert(config.Title == nil or type(config.Title) == "string", "Title expects a string")
-    assert(config.Layout == nil or config.Layout == "Bottom bar", "Unknown layout")
+    assert(
+        config.Layout == nil or layoutEdges[config.Layout],
+        "Layout must be Bottom bar, Top bar, Left bar or Right bar"
+    )
     if config.Size then
         assert(
             typeof(config.Size) == "Vector2"
@@ -373,6 +380,7 @@ function Library:CreateWindow(config)
     glassSurface(root, 0.12)
 
     local layoutStyle = "Bottom bar"
+    local dockEdge = "Bottom"
     local uiShown = true
     local windowTransitioning = false
     local windowMotionHost = Instance.new("CanvasGroup")
@@ -752,8 +760,10 @@ function Library:CreateWindow(config)
         local anchor = notificationAnchors[position]
         assert(anchor, "Notification position must be TopLeft, Top, TopRight, BottomLeft, Bottom or BottomRight")
         notificationPosition = position
-        -- Bottom-center would sit on the dock, so lift it above the bar.
-        local lift = position == "Bottom" and -78 or 0
+        -- A centred stack on the same edge as the dock would sit on the bar, so push it clear.
+        local lift = 0
+        if position == "Bottom" and dockEdge == "Bottom" then lift = -78 end
+        if position == "Top" and dockEdge == "Top" then lift = 78 end
         toastStack.AnchorPoint = anchor
         toastStack.Position = UDim2.new(anchor.X, 0, anchor.Y, lift)
         toastStack.Size = UDim2.new(1, 0, 1, -math.abs(lift))
@@ -4032,19 +4042,35 @@ function Library:CreateWindow(config)
     local dockAutoHide, dockExpanded, dockHoverUntil = false, false, 0
     local dockProgress, dockVelocity, dockFitScale = 0, 0, 1
     local revealHover, revealHoverAmount = false, 0
+    local function dockVertical() return dockEdge == "Left" or dockEdge == "Right" end
+    -- Centres an object along the dock edge, `inward` px in from that edge (negative = past it).
+    local function placeAtEdge(object, inward)
+        if dockEdge == "Bottom" then
+            object.AnchorPoint = Vector2.new(0.5, 1)
+            object.Position = UDim2.new(0.5, 0, 1, -inward)
+        elseif dockEdge == "Top" then
+            object.AnchorPoint = Vector2.new(0.5, 0)
+            object.Position = UDim2.new(0.5, 0, 0, inward)
+        elseif dockEdge == "Left" then
+            object.AnchorPoint = Vector2.new(0, 0.5)
+            object.Position = UDim2.new(0, inward, 0.5, 0)
+        else
+            object.AnchorPoint = Vector2.new(1, 0.5)
+            object.Position = UDim2.new(1, -inward, 0.5, 0)
+        end
+    end
     local function renderDock()
         local progress = math.clamp(dockProgress, 0, 1)
-        dockHost.AnchorPoint = Vector2.new(0.5, 1)
-        dockHost.Position = UDim2.new(0.5, 0, 1, 76 - 90 * dockProgress)
+        placeAtEdge(dockHost, 90 * dockProgress - 76)
         dockScale.Scale = dockFitScale * (0.94 + 0.06 * dockProgress)
         dockGlass.BackgroundTransparency = (0.08 + (1 - progress) * 0.22) * glassOpacityFactor
         dockRim.Transparency = 0.92 + (1 - progress) * 0.08
         local reveal = dockAutoHide and (1 - progress) or 0
         dockReveal.Visible = reveal > 0.005
         dockReveal.Interactable = not dockExpanded and reveal > 0.2
-        dockReveal.AnchorPoint = Vector2.new(0.5, 1)
-        dockReveal.Position = UDim2.new(0.5, 0, 1, -2 + 6 * progress)
-        grip.Size = UDim2.fromOffset((80 + 8 * revealHoverAmount) * (0.86 + 0.14 * reveal), 4)
+        placeAtEdge(dockReveal, 2 - 6 * progress)
+        local gripLength = (80 + 8 * revealHoverAmount) * (0.86 + 0.14 * reveal)
+        grip.Size = dockVertical() and UDim2.fromOffset(4, gripLength) or UDim2.fromOffset(gripLength, 4)
         grip.BackgroundTransparency = 1 - reveal * (0.45 + 0.12 * revealHoverAmount)
     end
     local function showDock(expanded, immediate)
@@ -4061,20 +4087,38 @@ function Library:CreateWindow(config)
             tab.Icon.Size = UDim2.fromOffset(22, 22)
             tab.Title.Visible = false
         end
-        local width = math.min(76 + #tabs * 52, math.max(128, viewport.AbsoluteSize.X - 24))
-        dockHost.Size = UDim2.fromOffset(width, 64)
-        dockFitScale = math.min(1, math.max(0.1, (viewport.AbsoluteSize.X - 24) / width))
+        -- The bar is laid out along its edge: tabs first, then a divider and the profile at the far end.
+        local vertical = dockVertical()
+        local available = vertical and viewport.AbsoluteSize.Y or viewport.AbsoluteSize.X
+        local length = math.min(76 + #tabs * 52, math.max(128, available - 24))
+        dockHost.Size = vertical and UDim2.fromOffset(64, length) or UDim2.fromOffset(length, 64)
+        dockFitScale = math.min(1, math.max(0.1, (available - 24) / length))
+        dockReveal.Size = vertical and UDim2.fromOffset(20, 104) or UDim2.fromOffset(104, 20)
         renderDock()
         sidebar.Size = UDim2.fromScale(1, 1)
-        navigationGroup.Position = UDim2.fromOffset(8, 6)
-        navigationGroup.Size = UDim2.new(1, -72, 0, 52)
+        if vertical then
+            navigationGroup.Position = UDim2.fromOffset(6, 8)
+            navigationGroup.Size = UDim2.new(0, 52, 1, -72)
+            profile.AnchorPoint = Vector2.new(0.5, 1)
+            profile.Position = UDim2.new(0.5, 0, 1, -12)
+            dockDivider.Size = UDim2.fromOffset(32, 1)
+            dockDivider.Position = UDim2.new(0, 16, 1, -62)
+        else
+            navigationGroup.Position = UDim2.fromOffset(8, 6)
+            navigationGroup.Size = UDim2.new(1, -72, 0, 52)
+            profile.AnchorPoint = Vector2.new(1, 0.5)
+            profile.Position = UDim2.new(1, -12, 0.5, 0)
+            dockDivider.Size = UDim2.fromOffset(1, 32)
+            dockDivider.Position = UDim2.new(1, -62, 0, 16)
+        end
         navigationPadding.PaddingTop = UDim.new(0, 4)
         navigationPadding.PaddingBottom = UDim.new(0, 4)
         navigationPadding.PaddingLeft = UDim.new(0, 4)
         navigationPadding.PaddingRight = UDim.new(0, 4)
     end
     local function setLayoutStyle(value)
-        assert(value == "Bottom bar", "Viz only supports Bottom bar")
+        assert(layoutEdges[value], "Layout must be Bottom bar, Top bar, Left bar or Right bar")
+        layoutStyle, dockEdge = value, layoutEdges[value]
         finishUIVisibility()
         cancelKeyCapture()
         closeDropdown(true)
@@ -4086,14 +4130,16 @@ function Library:CreateWindow(config)
         sidebar.ZIndex = 2
         sidebar.Position = UDim2.fromOffset(0, 0)
         sidebar.Active = false
+        local vertical = dockVertical()
         navigationLayout.Padding = UDim.new(0, 8)
-        navigationLayout.FillDirection = Enum.FillDirection.Horizontal
-        navigationLayout.HorizontalAlignment = Enum.HorizontalAlignment.Left
-        navigationLayout.VerticalAlignment = Enum.VerticalAlignment.Center
+        navigationLayout.FillDirection = vertical and Enum.FillDirection.Vertical or Enum.FillDirection.Horizontal
+        navigationLayout.HorizontalAlignment = vertical and Enum.HorizontalAlignment.Center
+            or Enum.HorizontalAlignment.Left
+        navigationLayout.VerticalAlignment = vertical and Enum.VerticalAlignment.Top or Enum.VerticalAlignment.Center
         navigationGroup.CanvasPosition = Vector2.zero
         navigationGroup.CanvasSize = UDim2.fromOffset(0, 0)
-        navigationGroup.AutomaticCanvasSize = Enum.AutomaticSize.X
-        navigationGroup.ScrollingDirection = Enum.ScrollingDirection.X
+        navigationGroup.AutomaticCanvasSize = vertical and Enum.AutomaticSize.Y or Enum.AutomaticSize.X
+        navigationGroup.ScrollingDirection = vertical and Enum.ScrollingDirection.Y or Enum.ScrollingDirection.X
         root.Size = UDim2.fromOffset(windowContentSize.X, windowContentSize.Y)
         body.Position = UDim2.fromOffset(0, 0)
         header.Position = UDim2.fromOffset(0, 0)
@@ -4102,6 +4148,7 @@ function Library:CreateWindow(config)
         dockHost.Visible = true
         refreshDockLayout()
         resize()
+        setNotificationPosition(notificationPosition)
         dockHoverUntil = os.clock() + 1.2
         showDock(true, true)
     end
@@ -4111,9 +4158,14 @@ function Library:CreateWindow(config)
         local home, savedPosition
         local progress, velocity, target = 1, 0, 1
         local minimumScale, hostPadding = 0.14, 12
+        -- The centre of the dock, where the window shrinks into when hidden.
         local function landingPoint()
-            local center = 14 + 32 * dockFitScale
-            return Vector2.new(viewport.AbsoluteSize.X / 2, viewport.AbsoluteSize.Y - center)
+            local inward = 14 + 32 * dockFitScale
+            local size = viewport.AbsoluteSize
+            if dockEdge == "Top" then return Vector2.new(size.X / 2, inward) end
+            if dockEdge == "Left" then return Vector2.new(inward, size.Y / 2) end
+            if dockEdge == "Right" then return Vector2.new(size.X - inward, size.Y / 2) end
+            return Vector2.new(size.X / 2, size.Y - inward)
         end
         local function smoothstep(value)
             value = math.clamp(value, 0, 1)
@@ -4199,10 +4251,16 @@ function Library:CreateWindow(config)
     track(viewport:GetPropertyChangedSignal("AbsoluteSize"):Connect(refreshDockLayout))
     local function updateDockHover(mouse, now)
         if not dockAutoHide then return end
-        local half = dockExpanded and (dockHost.AbsoluteSize.X / 2 + 12) or 56
-        local near = math.abs(mouse.X - viewport.AbsoluteSize.X / 2) <= half
-            and mouse.Y >= viewport.AbsoluteSize.Y - (dockExpanded and 96 or 18)
-            and mouse.Y <= viewport.AbsoluteSize.Y + 2
+        local size, vertical = viewport.AbsoluteSize, dockVertical()
+        -- `along` runs parallel to the dock edge; `depth` is the distance in from that edge.
+        local along = vertical and mouse.Y - size.Y / 2 or mouse.X - size.X / 2
+        local length = vertical and dockHost.AbsoluteSize.Y or dockHost.AbsoluteSize.X
+        local depth = dockEdge == "Top" and mouse.Y
+            or dockEdge == "Left" and mouse.X
+            or dockEdge == "Right" and size.X - mouse.X
+            or size.Y - mouse.Y
+        local half = dockExpanded and (length / 2 + 12) or 56
+        local near = math.abs(along) <= half and depth >= -2 and depth <= (dockExpanded and 96 or 18)
         if near then dockHoverUntil = now + 0.65 end
         local expanded = near or now < dockHoverUntil
         if expanded ~= dockExpanded then showDock(expanded) end
@@ -4487,7 +4545,7 @@ function Library:CreateWindow(config)
         track(viewport:GetPropertyChangedSignal("AbsoluteSize"):Connect(cancelWindowResize))
     end
 
-    local autoHideControl, keybindListControl, settingsTab, notificationPositionControl
+    local autoHideControl, keybindListControl, settingsTab, notificationPositionControl, layoutControl
     menuKeybind = { Keybind = config.MenuKey or Enum.KeyCode.RightShift, Modifiers = {} }
     function menuKeybind:RefreshKeybind() end
     function menuKeybind:SetModifiers(value)
@@ -4524,7 +4582,11 @@ function Library:CreateWindow(config)
             return true
         end
     )
-    local function applyStyle(value) setLayoutStyle("Bottom bar") end
+    local function applyStyle(value)
+        -- Older configs saved "Normal"; anything unknown falls back to the bottom bar.
+        setLayoutStyle(layoutEdges[value] and value or "Bottom bar")
+        if layoutControl and layoutControl.Value ~= layoutStyle then layoutControl:Set(layoutStyle, true) end
+    end
     local function applyAutoHide(value)
         setDockAutoHide(value)
         if autoHideControl then autoHideControl:Set(value, true) end
@@ -4539,7 +4601,7 @@ function Library:CreateWindow(config)
         root,
         function() return layoutStyle end,
         applyStyle,
-        function(value) return value == "Normal" or value == "Top bar" or value == "Bottom bar" end
+        function(value) return value == "Normal" or layoutEdges[value] ~= nil end
     )
     registerControl(
         "ui_dock_autohide",
@@ -4557,7 +4619,7 @@ function Library:CreateWindow(config)
         applyKeybindList,
         function(value) return type(value) == "boolean" end
     )
-    applyStyle("Bottom bar")
+    applyStyle(config.Layout or "Bottom bar")
     applyAutoHide(config.AutoHide == true)
     if config.Size then
         assert(typeof(config.Size) == "Vector2", "Window Size expects Vector2")
@@ -4629,7 +4691,7 @@ function Library:CreateWindow(config)
     function window:IsVisible() return uiShown end
     function window:Toggle() setUIVisible(not uiShown) end
     function window:SetStyle(value)
-        assert(value == "Bottom bar", "Viz only supports Bottom bar")
+        assert(layoutEdges[value], "Layout must be Bottom bar, Top bar, Left bar or Right bar")
         applyStyle(value)
     end
     function window:GetStyle() return layoutStyle end
@@ -4673,6 +4735,16 @@ function Library:CreateWindow(config)
     end
     function window:AddStyleControls(section)
         if autoHideControl then return end
+        layoutControl = section:AddDropdown({
+            Name = "Bar position",
+            Options = table.clone(layoutStyles),
+            Default = layoutStyle,
+            NoSave = true,
+            -- Deferred: switching layouts closes open dropdowns, including this one mid-callback.
+            Callback = function(value)
+                if value then task.defer(applyStyle, value) end
+            end,
+        })
         autoHideControl = section:AddCheckbox({
             Name = "Auto-hide bar",
             Default = dockAutoHide,
