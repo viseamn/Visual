@@ -280,13 +280,13 @@ function Library:CreateWindow(config)
         local halfWidth, halfHeight = root.Size.X.Offset * scale.Scale / 2, root.Size.Y.Offset * scale.Scale / 2
         local x = math.clamp(
             size.X * position.X.Scale + position.X.Offset,
-            halfWidth + 8,
-            math.max(halfWidth + 8, size.X - halfWidth - 8)
+            halfWidth,
+            math.max(halfWidth, size.X - halfWidth)
         )
         local y = math.clamp(
             size.Y * position.Y.Scale + position.Y.Offset,
-            halfHeight + 8,
-            math.max(halfHeight + 8, size.Y - halfHeight - 8)
+            halfHeight,
+            math.max(halfHeight, size.Y - halfHeight)
         )
         root.Position =
             UDim2.new(position.X.Scale, x - size.X * position.X.Scale, position.Y.Scale, y - size.Y * position.Y.Scale)
@@ -584,7 +584,7 @@ function Library:CreateWindow(config)
     toastStack.ZIndex = 200
     toastStack.Parent = viewport
     local toastLimit = Instance.new("UISizeConstraint")
-    toastLimit.MaxSize = Vector2.new(300, 100000)
+    toastLimit.MaxSize = Vector2.new(420, 100000)
     toastLimit.Parent = toastStack
     local toastLayout = Instance.new("UIListLayout")
     toastLayout.VerticalAlignment = Enum.VerticalAlignment.Bottom
@@ -599,42 +599,82 @@ function Library:CreateWindow(config)
         config = config or {}
         toastOrder = toastOrder + 1
         local duration = math.clamp(tonumber(config.Duration) or 3, 1, 30)
-        local card = rounded("CanvasGroup", "Notification", toastStack, 0, 0, 0, 82, "Card", 10)
-        card.Size = UDim2.new(1, 0, 0, 82)
+        local function escape(text)
+            return (tostring(text):gsub("&", "&amp;"):gsub("<", "&lt;"):gsub(">", "&gt;"))
+        end
+        local titleText = config.Title and escape(config.Title) or nil
+        local contentText = config.Content or config.Description
+        contentText = contentText and contentText ~= "" and escape(contentText) or nil
+        local text = titleText and contentText
+                and string.format('<b>%s</b>  <font transparency="0.35">%s</font>', titleText, contentText)
+            or titleText
+            or contentText
+            or "Notification"
+
+        local card = rounded("CanvasGroup", "Notification", toastStack, 0, 0, 0, 0, "Background", 12)
+        card.AutomaticSize = Enum.AutomaticSize.XY
+        card.BackgroundTransparency = 0.04
         card.LayoutOrder = toastOrder
         card.GroupTransparency = 1
         local stroke = Instance.new("UIStroke")
-        bindTheme(stroke, "Color", "Border")
+        bindTheme(stroke, "Color", "Text")
+        stroke.Transparency = 0.9
         stroke.Parent = card
-        icon(card, config.Icon or "bell", 12, 14, 18, "Accent")
-        local title = label(card, config.Title or "Notification", 13)
-        setUIFont(title, true)
-        title.Position = UDim2.fromOffset(39, 10)
-        title.Size = UDim2.new(1, -70, 0, 22)
-        title.TextTruncate = Enum.TextTruncate.AtEnd
-        local message = label(card, config.Content or config.Description or "", 12)
-        message.Position = UDim2.fromOffset(39, 33)
-        message.Size = UDim2.new(1, -51, 0, 34)
-        bindTheme(message, "TextColor3", "Muted")
+        local cardScale = Instance.new("UIScale")
+        cardScale.Scale = 0.94
+        cardScale.Parent = card
+
+        local row = Instance.new("Frame")
+        row.Name = "Row"
+        row.AutomaticSize = Enum.AutomaticSize.XY
+        row.BackgroundTransparency = 1
+        row.Parent = card
+        local rowPadding = Instance.new("UIPadding")
+        rowPadding.PaddingTop = UDim.new(0, 12)
+        rowPadding.PaddingBottom = UDim.new(0, 12)
+        rowPadding.PaddingLeft = UDim.new(0, 14)
+        rowPadding.PaddingRight = UDim.new(0, 18)
+        rowPadding.Parent = row
+        local rowLayout = Instance.new("UIListLayout")
+        rowLayout.FillDirection = Enum.FillDirection.Horizontal
+        rowLayout.VerticalAlignment = Enum.VerticalAlignment.Center
+        rowLayout.SortOrder = Enum.SortOrder.LayoutOrder
+        rowLayout.Padding = UDim.new(0, 12)
+        rowLayout.Parent = row
+        local toastIcon = icon(row, config.Icon or "info", 0, 0, 18, "Text", "Text")
+        toastIcon.LayoutOrder = 1
+        local message = label(row, text, 14)
+        message.Name = "Message"
+        message.LayoutOrder = 2
+        message.RichText = true
         message.TextWrapped = true
-        message.TextYAlignment = Enum.TextYAlignment.Top
-        message.TextTruncate = Enum.TextTruncate.AtEnd
-        local close = rounded("TextButton", "Close", card, 0, 7, 24, 24, "Card", 6)
-        close.Position = UDim2.new(1, -29, 0, 7)
-        close.Text = "x"
-        close.TextSize = 14
-        setUIFont(close)
-        bindTheme(close, "TextColor3", "Muted")
-        animateButton(close, "Card")
-        local progress = rounded("Frame", "Lifetime", card, 0, 79, 0, 3, "Accent", 1)
-        progress.Size = UDim2.new(1, 0, 0, 3)
+        message.AutomaticSize = Enum.AutomaticSize.XY
+        message.Size = UDim2.fromOffset(0, 18)
+        local messageLimit = Instance.new("UISizeConstraint")
+        messageLimit.MaxSize = Vector2.new(420 - 14 - 18 - 18 - 12, 100000)
+        messageLimit.Parent = message
+
+        local close = Instance.new("TextButton")
+        close.Name = "Dismiss"
+        close.Text = ""
+        close.AutoButtonColor = false
+        close.BackgroundTransparency = 1
+        close.Size = UDim2.fromScale(1, 1)
+        close.ZIndex = 2
+        close.Parent = card
+        local progress = rounded("Frame", "Lifetime", card, 0, 0, 0, 2, "Text", 1)
+        progress.AnchorPoint = Vector2.new(0, 1)
+        progress.Position = UDim2.fromScale(0, 1)
+        progress.Size = UDim2.new(1, 0, 0, 2)
+        progress.BackgroundTransparency = 0.8
         local timer = TweenService:Create(
             progress,
             TweenInfo.new(duration, Enum.EasingStyle.Linear),
-            { Size = UDim2.new(0, 0, 0, 3) }
+            { Size = UDim2.new(0, 0, 0, 2) }
         )
         timer:Play()
         local entrance = tween(card, { GroupTransparency = 0 }, 0.2)
+        motion(cardScale, { Scale = 1 }, 0.2)
         local toast = { Closed = false }
         function toast:Dismiss(immediate)
             if self.Closed then return end
@@ -652,6 +692,7 @@ function Library:CreateWindow(config)
                 return
             end
             tween(card, { GroupTransparency = 1 }, 0.18)
+            motion(cardScale, { Scale = 0.94 }, 0.18)
             task.delay(animationDuration(0.18), function()
                 if uiAlive and card.Parent then card:Destroy() end
             end)
@@ -1510,8 +1551,8 @@ function Library:CreateWindow(config)
             local available = viewport.AbsoluteSize
             local size = detachedHost and detachedHost.AbsoluteSize or frame.AbsoluteSize
             return Vector2.new(
-                math.clamp(position.X, 8, math.max(8, available.X - size.X - 8)),
-                math.clamp(position.Y, 8, math.max(8, available.Y - size.Y - 8))
+                math.clamp(position.X, 0, math.max(0, available.X - size.X)),
+                math.clamp(position.Y, 0, math.max(0, available.Y - size.Y))
             )
         end
         local function resizeGroup(immediate)
@@ -1530,13 +1571,13 @@ function Library:CreateWindow(config)
                 detachedHost.Position = UDim2.fromOffset(
                     math.clamp(
                         detachedHost.Position.X.Offset,
-                        8,
-                        math.max(8, viewport.AbsoluteSize.X - detachedWidth * factor - 8)
+                        0,
+                        math.max(0, viewport.AbsoluteSize.X - detachedWidth * factor)
                     ),
                     math.clamp(
                         detachedHost.Position.Y.Offset,
-                        8,
-                        math.max(8, viewport.AbsoluteSize.Y - detachedHost.Size.Y.Offset * factor - 8)
+                        0,
+                        math.max(0, viewport.AbsoluteSize.Y - detachedHost.Size.Y.Offset * factor)
                     )
                 )
             end
@@ -3934,10 +3975,10 @@ function Library:CreateWindow(config)
     local function clampWindow(position)
         local available = viewport.AbsoluteSize
         local size = Vector2.new(root.Size.X.Offset, root.Size.Y.Offset) * scale.Scale
-        local low = Vector2.new(size.X * root.AnchorPoint.X + 8, size.Y * root.AnchorPoint.Y + 8)
+        local low = Vector2.new(size.X * root.AnchorPoint.X, size.Y * root.AnchorPoint.Y)
         local high = Vector2.new(
-            math.max(low.X, available.X - size.X * (1 - root.AnchorPoint.X) - 8),
-            math.max(low.Y, available.Y - size.Y * (1 - root.AnchorPoint.Y) - 8)
+            math.max(low.X, available.X - size.X * (1 - root.AnchorPoint.X)),
+            math.max(low.Y, available.Y - size.Y * (1 - root.AnchorPoint.Y))
         )
         return Vector2.new(math.clamp(position.X, low.X, high.X), math.clamp(position.Y, low.Y, high.Y))
     end
