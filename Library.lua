@@ -1198,93 +1198,6 @@ function Library:CreateWindow(config)
         end
     end)
 
-    local addTooltip
-    do
-        local tooltip = rounded("CanvasGroup", "Tooltip", viewport, 0, 0, 248, 0, "Card", 9)
-        tooltip.ZIndex = 300
-        tooltip.AutomaticSize = Enum.AutomaticSize.Y
-        tooltip.Visible = false
-        tooltip.GroupTransparency = 1
-        glassSurface(tooltip, 0.02)
-        local padding = Instance.new("UIPadding")
-        padding.PaddingTop, padding.PaddingBottom = UDim.new(0, 8), UDim.new(0, 8)
-        padding.PaddingLeft, padding.PaddingRight = UDim.new(0, 10), UDim.new(0, 10)
-        padding.Parent = tooltip
-        local text = label(tooltip, "", 12)
-        text.Size = UDim2.new(1, 0, 0, 0)
-        text.AutomaticSize = Enum.AutomaticSize.Y
-        text.TextWrapped = true
-        local owner, normalText, disabledText, revision
-        revision = 0
-        local function dismiss()
-            revision = revision + 1
-            owner = nil
-            tooltip.Visible = false
-            motion(tooltip, { GroupTransparency = 1 }, 0, true)
-        end
-        local function description()
-            local object, disabled = owner, false
-            while object and object ~= screen do
-                if object:IsA("GuiObject") and not object.Visible then return nil end
-                if object:GetAttribute("Disabled") then disabled = true end
-                object = object.Parent
-            end
-            if not object or dialogOpen then return nil end
-            return disabled and (disabledText or normalText) or normalText
-        end
-        addTooltip = function(target, content, disabledContent)
-            if not content and not disabledContent then return end
-            local connections, destroyed = {}, false
-            connections[1] = target.MouseEnter:Connect(function()
-                dismiss()
-                owner, normalText, disabledText = target, content, disabledContent
-                local current = revision
-                task.delay(0.35, function()
-                    if not uiAlive or destroyed or revision ~= current then return end
-                    local message = description()
-                    if not message or message == "" then return end
-                    text.Text = tostring(message)
-                    tooltip.Visible = true
-                    motion(tooltip, { GroupTransparency = 0 }, 0.14)
-                end)
-            end)
-            connections[2] = target.MouseLeave:Connect(function()
-                if owner == target then dismiss() end
-            end)
-            local binding = {}
-            function binding:Destroy()
-                if destroyed then return end
-                destroyed = true
-                if owner == target then dismiss() end
-                for _, connection in ipairs(connections) do
-                    connection:Disconnect()
-                end
-            end
-            connections[3] = target.Destroying:Connect(function() binding:Destroy() end)
-            return binding
-        end
-        track(UserInputService.InputBegan:Connect(dismiss))
-        track(game:GetService("RunService").RenderStepped:Connect(function()
-            if not owner or not tooltip.Visible then return end
-            local message = description()
-            if not message or message == "" then
-                dismiss()
-                return
-            end
-            text.Text = tostring(message)
-            local available = viewport.AbsoluteSize
-            tooltip.Size = UDim2.fromOffset(math.max(1, math.min(248, available.X - 16)), 0)
-            local mouse = UserInputService:GetMouseLocation()
-                - game:GetService("GuiService"):GetGuiInset()
-                - viewport.AbsolutePosition
-            local size = tooltip.AbsoluteSize
-            tooltip.Position = UDim2.fromOffset(
-                math.clamp(mouse.X + 14, 8, math.max(8, available.X - size.X - 8)),
-                math.clamp(mouse.Y + 18, 8, math.max(8, available.Y - size.Y - 8))
-            )
-        end))
-    end
-
     local function createColorPicker(owner, swatch, options)
         options = options or {}
         unbindTheme(swatch, "BackgroundColor3")
@@ -3318,7 +3231,6 @@ function Library:CreateWindow(config)
                 end
                 disable(config.Disabled)
                 visible(config.Visible)
-                addTooltip(container, config.Tooltip, config.DisabledTooltip)
                 container.Destroying:Connect(function()
                     if activeSlider and activeSlider.Control == control then finishSlider() end
                     stateByControl[control] = nil
@@ -3508,7 +3420,6 @@ function Library:CreateWindow(config)
         stroke.Parent = button
         tab.Stroke = stroke
         glassSurface(button, 1, stroke)
-        addTooltip(button, tab.Name)
         tab.Scale = Instance.new("UIScale")
         tab.Scale.Parent = button
         tab.Glow = attachGlow(dockGlowLayer, button, {
@@ -4015,6 +3926,77 @@ function Library:CreateWindow(config)
         )
         if ok and profile.Parent then profile.Image = thumbnail end
     end)
+    -- Taskbar-style search pill at the start of the bar, mirrored with the header search. A side bar has no
+    -- room for a field, so there it shrinks to a round button that opens the window and focuses the search.
+    local dockSearch = rounded("TextButton", "DockSearch", sidebar, 12, 14, 148, 36, "Search", 18)
+    do
+        dockSearch.BackgroundTransparency = 0.2
+        dockSearch:FindFirstChildOfClass("UICorner").CornerRadius = UDim.new(0.5, 0)
+        local rim = Instance.new("UIStroke")
+        rim.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+        bindTheme(rim, "Color", "Text")
+        rim.Transparency = 0.9
+        rim.Parent = dockSearch
+        local glyph = icon(dockSearch, "search", 12, 10, 16, "Muted")
+        glyph.Name = "Glyph"
+        local box = rounded("TextBox", "Box", dockSearch, 36, 0, 0, 36, "Search", 0)
+        box.Size = UDim2.new(1, -46, 1, 0)
+        box.BackgroundTransparency = 1
+        box.Text = ""
+        box.PlaceholderText = "Search"
+        box.TextXAlignment = Enum.TextXAlignment.Left
+        box.TextTruncate = Enum.TextTruncate.AtEnd
+        box.ClearTextOnFocus = false
+        box.TextSize = 13
+        setUIFont(box)
+        bindTheme(box, "TextColor3", "Text")
+        bindTheme(box, "PlaceholderColor3", "Muted")
+        local hovering = false
+        local function refresh()
+            local active = box:IsFocused()
+            tween(dockSearch, { BackgroundColor3 = (hovering or active) and "Hover" or "Search" }, 0.16)
+            tween(rim, { Color = active and "Accent" or "Text" }, 0.16)
+            motion(rim, { Transparency = active and 0.35 or 0.9 }, 0.16)
+            tween(glyph, { ImageColor3 = active and "Accent" or "Muted" }, 0.16)
+        end
+        dockSearch.MouseEnter:Connect(function()
+            hovering = true
+            refresh()
+        end)
+        dockSearch.MouseLeave:Connect(function()
+            hovering = false
+            refresh()
+        end)
+        box.Focused:Connect(function()
+            -- Searching from the bar while the window is hidden brings it back; showing it drops focus,
+            -- so take it again once the window has started opening.
+            if not uiShown and not dialogOpen then
+                setUIVisible(true)
+                task.defer(function()
+                    if uiAlive and box.Parent then box:CaptureFocus() end
+                end)
+            end
+            refresh()
+        end)
+        box.FocusLost:Connect(refresh)
+        dockSearch.Activated:Connect(function()
+            if dialogOpen then return end
+            if box.Visible then
+                box:CaptureFocus()
+                return
+            end
+            if not uiShown then setUIVisible(true) end
+            task.defer(function()
+                if uiAlive then globalSearch:CaptureFocus() end
+            end)
+        end)
+        box:GetPropertyChangedSignal("Text"):Connect(function()
+            if globalSearch.Text ~= box.Text then globalSearch.Text = box.Text end
+        end)
+        globalSearch:GetPropertyChangedSignal("Text"):Connect(function()
+            if box.Text ~= globalSearch.Text then box.Text = globalSearch.Text end
+        end)
+    end
 
     local dockHost = Instance.new("Frame")
     dockHost.Name = "BottomBar"
@@ -4129,25 +4111,35 @@ function Library:CreateWindow(config)
             tab.Icon.Size = UDim2.fromOffset(22, 22)
             tab.Title.Visible = false
         end
-        -- The bar is laid out along its edge: tabs first, then a divider and the profile at the far end.
+        -- The bar is laid out along its edge: search, tabs, then a divider and the profile at the far end.
         local vertical = dockVertical()
+        local searchSpan = vertical and 54 or 160
         local available = vertical and viewport.AbsoluteSize.Y or viewport.AbsoluteSize.X
-        local length = math.min(76 + #tabs * 52, math.max(128, available - 24))
+        local length = math.min(76 + searchSpan + #tabs * 52, math.max(128 + searchSpan, available - 24))
         dockHost.Size = vertical and UDim2.fromOffset(64, length) or UDim2.fromOffset(length, 64)
         dockFitScale = math.min(1, math.max(0.1, (available - 24) / length))
         dockReveal.Size = vertical and UDim2.fromOffset(20, 104) or UDim2.fromOffset(104, 20)
         renderDock()
         sidebar.Size = UDim2.fromScale(1, 1)
+        dockSearch.Box.Visible = not vertical
         if vertical then
-            navigationGroup.Position = UDim2.fromOffset(6, 8)
-            navigationGroup.Size = UDim2.new(0, 52, 1, -72)
+            dockSearch.AnchorPoint = Vector2.new(0.5, 0)
+            dockSearch.Position = UDim2.new(0.5, 0, 0, 10)
+            dockSearch.Size = UDim2.fromOffset(44, 44)
+            dockSearch.Glyph.Position = UDim2.fromOffset(14, 14)
+            navigationGroup.Position = UDim2.fromOffset(6, 8 + searchSpan)
+            navigationGroup.Size = UDim2.new(0, 52, 1, -72 - searchSpan)
             profile.AnchorPoint = Vector2.new(0.5, 1)
             profile.Position = UDim2.new(0.5, 0, 1, -12)
             dockDivider.Size = UDim2.fromOffset(32, 1)
             dockDivider.Position = UDim2.new(0, 16, 1, -62)
         else
-            navigationGroup.Position = UDim2.fromOffset(8, 6)
-            navigationGroup.Size = UDim2.new(1, -72, 0, 52)
+            dockSearch.AnchorPoint = Vector2.new(0, 0.5)
+            dockSearch.Position = UDim2.new(0, 12, 0.5, 0)
+            dockSearch.Size = UDim2.fromOffset(148, 36)
+            dockSearch.Glyph.Position = UDim2.fromOffset(12, 10)
+            navigationGroup.Position = UDim2.fromOffset(8 + searchSpan, 6)
+            navigationGroup.Size = UDim2.new(1, -72 - searchSpan, 0, 52)
             profile.AnchorPoint = Vector2.new(1, 0.5)
             profile.Position = UDim2.new(1, -12, 0.5, 0)
             dockDivider.Size = UDim2.fromOffset(1, 32)
@@ -4756,7 +4748,6 @@ function Library:CreateWindow(config)
     function window:GetNotificationPosition() return notificationPosition end
     function window:Dialog(options) return showDialog(options) end
     function window:AddOverlay(options) return addOverlay(options) end
-    function window:AddTooltip(object, text, disabledText) return addTooltip(object, text, disabledText) end
     function window:CreateSettingsTab(name)
         if settingsTab then return settingsTab end
         settingsTab = addTab({ Name = name or "Settings", Icon = "settings" })
