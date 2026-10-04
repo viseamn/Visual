@@ -543,6 +543,12 @@ function Library:CreateWindow(config)
         activeSlider = nil
         if previous and previous.Release then previous.Release() end
     end
+    local activeToggleDrag
+    local function cancelToggleDrag()
+        local previous = activeToggleDrag
+        activeToggleDrag = nil
+        if previous then previous.Cancel() end
+    end
     local activeColorDrag
     local function finishColorDrag()
         local previous = activeColorDrag
@@ -979,6 +985,7 @@ function Library:CreateWindow(config)
         closeDropdown(true)
         finishSlider()
         finishColorDrag()
+        cancelToggleDrag()
         releaseHolds()
         cancelWindowDrag()
         cancelWindowResize()
@@ -1066,6 +1073,7 @@ function Library:CreateWindow(config)
     end))
     track(UserInputService.TextBoxFocused:Connect(function()
         cancelKeyCapture()
+        cancelToggleDrag()
         releaseHolds()
     end))
     screen.Destroying:Connect(function()
@@ -2324,10 +2332,55 @@ function Library:CreateWindow(config)
                     })
                 end
             end)
-            button.Activated:Connect(function()
-                if canInteract(container) then control:Set(not control.Value) end
+            local completedDragInput
+            button.InputBegan:Connect(function(input)
+                if not canInteract(container) or control.KeybindMode == "Always" then return end
+                if input.UserInputType ~= Enum.UserInputType.MouseButton1
+                    and input.UserInputType ~= Enum.UserInputType.Touch then return end
+                cancelToggleDrag()
+                finishSlider()
+                finishColorDrag()
+                completedDragInput = nil
+                local startX = input.Position.X
+                local factor = math.max(0.01, button.AbsoluteSize.X / 34)
+                local initial = control.Value and 1 or 0
+                local gesture = { Input = input, Control = control, Dragged = false, Position = initial }
+                local function restore()
+                    completedDragInput = input
+                    control:Set(control.Value, true)
+                end
+                gesture.Cancel = restore
+                gesture.Update = function(position)
+                    if not canInteract(container) then cancelToggleDrag(); return end
+                    local delta = position.X - startX
+                    if not gesture.Dragged and math.abs(delta) < 3 * factor then return end
+                    gesture.Dragged = true
+                    gesture.Position = math.clamp(initial + delta / (14 * factor), 0, 1)
+                    local enabled = gesture.Position >= 0.5
+                    motion(dot, {
+                        Position = UDim2.fromOffset(10 + 14 * gesture.Position, 10),
+                        Size = UDim2.fromOffset(14, 14),
+                        BackgroundColor3 = enabled and "OnAccent" or "Muted",
+                    }, 0.045)
+                    motion(button, { BackgroundColor3 = enabled and "Accent" or "Navigation" }, 0.08)
+                    switchGlow.Target = enabled and 1 or 0
+                end
+                gesture.Finish = function()
+                    if not gesture.Dragged then return end
+                    completedDragInput = input
+                    if not canInteract(container) then restore(); return end
+                    local enabled = gesture.Position >= 0.5
+                    control:Set(enabled, enabled == control.Value)
+                end
+                activeToggleDrag = gesture
+            end)
+            button.Activated:Connect(function(input)
+                if input and input == completedDragInput then return end
+                if activeToggleDrag and activeToggleDrag.Control == control and activeToggleDrag.Dragged then return end
+                if canInteract(container) and control.KeybindMode ~= "Always" then control:Set(not control.Value) end
             end)
             container.Destroying:Connect(function()
+                if activeToggleDrag and activeToggleDrag.Control == control then activeToggleDrag = nil end
                 keybindControls[control] = nil
                 refreshKeybindMenu()
                 if capturingKeybind == control then capturingKeybind = nil end
@@ -2436,7 +2489,9 @@ function Library:CreateWindow(config)
             end
             local hit = rounded("TextButton", "TrackHit", container, 0, 0, 0, 28, "Card", 0)
             hit.Position = UDim2.new(trackStart, 0, 0, 0)
-            hit.Size = UDim2.new(1 - trackStart, -8, 1, 0)
+            -- Reserve room for the thumb at its maximum pressed scale (16 * 1.18 / 2).
+            -- Rows are CanvasGroups, so even a subpixel overflow is clipped at the right edge.
+            hit.Size = UDim2.new(1 - trackStart, -12, 1, 0)
             hit.BackgroundTransparency = 1
             local trackFrame = rounded("Frame", "Track", hit, 0, 10, 0, 8, "Navigation", 4)
             trackFrame.Size = UDim2.new(1, 0, 0, 8)
@@ -3233,6 +3288,7 @@ function Library:CreateWindow(config)
                 local config = type(options) == "table" and options or {}
                 container:SetAttribute("SearchText", config.Tooltip or "")
                 local function stopInteraction()
+                    if activeToggleDrag and activeToggleDrag.Control == control then cancelToggleDrag() end
                     finishSlider()
                     finishColorDrag()
                     if
@@ -3326,6 +3382,7 @@ function Library:CreateWindow(config)
                 local firstActivation = group.ActiveSection == nil
                 closeDropdown(true)
                 finishSlider()
+                cancelToggleDrag()
                 group.ActiveSection = self
                 motion(group.TabIndicator, {
                     Size = UDim2.new(1 / #group.Sections, -4, 1, -4),
@@ -3432,6 +3489,7 @@ function Library:CreateWindow(config)
         cancelKeyCapture()
         closeDropdown()
         finishSlider()
+        cancelToggleDrag()
         for _, tab in ipairs(tabs) do
             if tab.Fade then tab.Fade:Cancel() end
             local active = tab == target
@@ -3570,6 +3628,11 @@ function Library:CreateWindow(config)
         return tab
     end
     track(UserInputService.InputChanged:Connect(function(input)
+        if activeToggleDrag and (input == activeToggleDrag.Input
+            or (activeToggleDrag.Input.UserInputType == Enum.UserInputType.MouseButton1
+                and input.UserInputType == Enum.UserInputType.MouseMovement)) then
+            activeToggleDrag.Update(input.Position)
+        end
         if
             activeSlider
             and (
@@ -3585,8 +3648,14 @@ function Library:CreateWindow(config)
     end))
     track(UserInputService.InputEnded:Connect(function(input)
         if activeSlider and input == activeSlider.Input then finishSlider() end
+        if activeToggleDrag and input == activeToggleDrag.Input then
+            local previous = activeToggleDrag
+            activeToggleDrag = nil
+            previous.Finish()
+        end
     end))
     track(UserInputService.WindowFocusReleased:Connect(function() finishSlider() end))
+    track(UserInputService.WindowFocusReleased:Connect(cancelToggleDrag))
     screen.Destroying:Connect(function()
         finishSlider()
         for _, tab in ipairs(tabs) do
@@ -3603,6 +3672,7 @@ function Library:CreateWindow(config)
         if activeDialog then activeDialog:Close() end
         closeDropdown(true)
         cancelKeyCapture()
+        cancelToggleDrag()
         releaseHolds()
         dialogOpen = true
         local shade = rounded("TextButton", "DialogOverlay", viewport, 0, 0, 0, 0, Color3.new(0, 0, 0), 0)
@@ -4865,6 +4935,7 @@ function Library:CreateWindow(config)
                 cancelKeyCapture()
                 closeDropdown(true)
                 finishSlider()
+                cancelToggleDrag()
                 finishColorDrag()
                 releaseHolds(silent)
                 cancelWindowDrag()

@@ -67,6 +67,8 @@ Library.Options.Name.Text = "Player"
 
 Toggle, checkbox, slider, dropdown, color picker, and keybind return control objects. Input, button, label, and divider return Roblox instances. Controls with `Set` also expose `SetValue`. The keybind editor exposes `SetKeybind` and `SetModifiers`; it does not dispatch an action by itself. A toggle can dispatch through `Keybind = "F"`, `Mode = "Toggle"` or `"Hold"`, and `Modifiers = {Ctrl = true}`.
 
+Toggle switches support clicking and horizontal dragging with a mouse or touch. Drag the thumb toward the right to enable or left to disable; the value commits on release. Canceling a drag leaves the current value unchanged. `Always` mode keeps the toggle enabled.
+
 Controls accept `Callback`, `NoSave`, `Disabled`, and `Visible` where applicable. There are no hover tooltips; a `Tooltip` string is still matched by search. Use `control:SetDisabled(true)` / `SetVisible(false)` for control objects, or `Group:SetControlDisabled(instance, true)` / `SetControlVisible(instance, false)` for returned instances.
 
 Groupboxes have `Detach`, `Attach`, `IsDetached`, `SetCollapsed`, and `ToggleCollapsed`. Drag the header to detach; release it inside the main window to attach again. `Group:AddTab("General")` creates a section supporting the same control constructors. `AddTextbox` aliases `AddInput`, and `AddDoubleSlider` aliases `AddRangeSlider`.
@@ -118,7 +120,7 @@ Config values and theme data are validated before application. A failed write ro
 
 ## Validation
 
-The three runtime modules compile with Luau. `tests/ui-regressions.js` passes 38 regression checks covering config cancellation, snapshot and callback failures, rollback, shared name limits, theme overwrite confirmation, preset synchronization, file-list errors, modifier keybinds and slider precision. These checks use mocked services and UI controls, plus extracted Library functions; they do not verify in-game rendering.
+The three runtime modules compile with Luau. `tests/ui-regressions.js` passes 50 regression checks covering config cancellation, snapshot and callback failures, rollback, shared name limits, theme overwrite confirmation, preset synchronization, file-list errors, modifier keybinds, slider precision and toggle click/drag gestures. These checks use mocked services and UI controls, plus extracted Library functions; they do not verify in-game rendering.
 
 ```powershell
 node tests/ui-regressions.js <path-to-luau.exe>
