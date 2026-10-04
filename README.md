@@ -158,4 +158,4 @@ node tests/ui-regressions.js <path-to-luau.exe>
 node tests/ui-features.js <path-to-luau.exe>
 ```
 
-The feature suite adds 43 behavioral checks for input validation/commit modes, listener cleanup and dependency restoration/visibility. Hover rendering and layout still require verification in Roblox. Obsidian-derived features and attribution are documented in `THIRD_PARTY_NOTICES.md`; retain it and `OBSIDIAN_LICENSE.txt` when distributing the library.
+The feature suite adds 55 behavioral checks for input validation/commit modes, listener cleanup, dependency restoration/visibility, and tooltip positioning/hover cancellation. Tooltip placement accounts for the Roblox GUI inset, flips at viewport edges and validates the pointer each frame. Hover rendering and layout still require verification in Roblox. Obsidian-derived features and attribution are documented in `THIRD_PARTY_NOTICES.md`; retain it and `OBSIDIAN_LICENSE.txt` when distributing the library.

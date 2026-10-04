@@ -148,6 +148,18 @@ local function validInput(value, options)
     return true
 end
 
+local function tooltipPosition(point, size, bounds)
+    local margin = 8
+    local x, y = point.X + 14, point.Y + 18
+    if x + size.X > bounds.X - margin then x = point.X - size.X - 14 end
+    if y + size.Y > bounds.Y - margin then y = point.Y - size.Y - 8 end
+    local minX = math.min(margin, math.max(0, bounds.X - size.X))
+    local minY = math.min(margin, math.max(0, bounds.Y - size.Y))
+    x = math.clamp(x, minX, math.max(minX, bounds.X - size.X - margin))
+    y = math.clamp(y, minY, math.max(minY, bounds.Y - size.Y - margin))
+    return x, y
+end
+
 local function dependenciesMatch(dependencies)
     for _, dependency in ipairs(dependencies) do
         local control, expected = dependency[1], dependency[2]
@@ -1728,11 +1740,12 @@ function Library:CreateWindow(config)
         return true
     end
 
-    local tooltip = { Owner = nil, Token = 0 }
+    local tooltip = { Owner = nil, Token = 0, Ready = false }
     function tooltip:Hide(owner)
         if owner and self.Owner ~= owner then return end
         self.Token = self.Token + 1
         self.Owner = nil
+        self.Ready = false
         if self.Frame then self.Frame.Visible = false end
     end
     function tooltip:Bind(owner, info)
@@ -1747,6 +1760,7 @@ function Library:CreateWindow(config)
                 if not text or text == "" then return end
                 if not self.Frame then
                     self.Frame = rounded("Frame", "Tooltip", viewport, 0, 0, 260, 0, "Card", 6)
+                    self.Frame.Visible = false
                     self.Frame.AutomaticSize = Enum.AutomaticSize.Y
                     self.Frame.ZIndex = 240
                     local padding = Instance.new("UIPadding")
@@ -1760,7 +1774,7 @@ function Library:CreateWindow(config)
                     self.Label.ZIndex = 241
                 end
                 self.Label.Text = tostring(text)
-                self.Frame.Visible = true
+                self.Ready = true
             end)
         end)
         owner.MouseLeave:Connect(function() self:Hide(owner) end)
@@ -1768,19 +1782,32 @@ function Library:CreateWindow(config)
     end
     track(game:GetService("RunService").RenderStepped:Connect(function()
         if not tooltip.Owner then return end
+        -- MouseLocation includes Roblox's top bar; AbsolutePosition uses GUI coordinates.
+        local mouse = UserInputService:GetMouseLocation() - game:GetService("GuiService"):GetGuiInset()
+        local ownerPosition, ownerSize = tooltip.Owner.AbsolutePosition, tooltip.Owner.AbsoluteSize
+        if mouse.X < ownerPosition.X or mouse.Y < ownerPosition.Y
+            or mouse.X >= ownerPosition.X + ownerSize.X or mouse.Y >= ownerPosition.Y + ownerSize.Y then
+            tooltip:Hide(); return
+        end
         local ancestor = tooltip.Owner
         while ancestor and ancestor ~= screen do
             if ancestor:IsA("GuiObject") and not ancestor.Visible then tooltip:Hide(); return end
+            if ancestor:IsA("GuiObject") and ancestor.ClipsDescendants then
+                local position, size = ancestor.AbsolutePosition, ancestor.AbsoluteSize
+                if mouse.X < position.X or mouse.Y < position.Y
+                    or mouse.X >= position.X + size.X or mouse.Y >= position.Y + size.Y then
+                    tooltip:Hide(); return
+                end
+            end
             ancestor = ancestor.Parent
         end
+        if ancestor ~= screen then tooltip:Hide(); return end
         if dialogOpen then tooltip:Hide(); return end
-        if tooltip.Frame and tooltip.Frame.Visible then
-            local point = UserInputService:GetMouseLocation() - viewport.AbsolutePosition
-            local size = tooltip.Frame.AbsoluteSize
-            local x = math.clamp(point.X + 14, 0, math.max(0, viewport.AbsoluteSize.X - size.X))
-            local y = point.Y + 18
-            if y + size.Y > viewport.AbsoluteSize.Y then y = point.Y - size.Y - 8 end
-            tooltip.Frame.Position = UDim2.fromOffset(x, math.max(0, y))
+        if tooltip.Frame and tooltip.Ready then
+            tooltip.Frame.Size = UDim2.fromOffset(math.max(1, math.min(260, viewport.AbsoluteSize.X - 16)), 0)
+            local x, y = tooltipPosition(mouse - viewport.AbsolutePosition, tooltip.Frame.AbsoluteSize, viewport.AbsoluteSize)
+            tooltip.Frame.Position = UDim2.fromOffset(x, y)
+            tooltip.Frame.Visible = true
         end
     end))
 
