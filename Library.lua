@@ -82,6 +82,7 @@ function Library:CreateWindow(config)
     config = config or {}
     assert(type(config) == "table", "CreateWindow expects an options table")
     assert(config.Title == nil or type(config.Title) == "string", "Title expects a string")
+    assert(config.CanvasGroups == nil or type(config.CanvasGroups) == "boolean", "CanvasGroups expects a boolean")
     assert(
         config.Layout == nil or layoutEdges[config.Layout],
         "Layout must be Bottom bar, Top bar, Left bar or Right bar"
@@ -109,6 +110,19 @@ function Library:CreateWindow(config)
     local UserInputService = game:GetService("UserInputService")
     local TweenService = game:GetService("TweenService")
     local HttpService = game:GetService("HttpService")
+    -- Flattened CanvasGroup textures can exceed the mobile client's texture budget.
+    -- Keep touch clients on ordinary Frames; desktop can retain grouped fades.
+    local useCanvasGroups = config.CanvasGroups == nil and not UserInputService.TouchEnabled
+        or config.CanvasGroups == true
+    local function newUI(className)
+        local fallback = className == "CanvasGroup" and not useCanvasGroups
+        local object = Instance.new(fallback and "Frame" or className)
+        if fallback then object.ClipsDescendants = true end
+        return object
+    end
+    local function setGroupTransparency(object, value)
+        if object:IsA("CanvasGroup") then object.GroupTransparency = value end
+    end
     local player = Players.LocalPlayer
     assert(player, "Viz must run on the client")
 
@@ -194,7 +208,7 @@ function Library:CreateWindow(config)
 
     local function animationDuration(seconds) return seconds end
     local function rounded(className, name, parent, x, y, width, height, color, radius)
-        local object = Instance.new(className)
+        local object = newUI(className)
         object.Name = name
         object.Position = UDim2.fromOffset(x, y)
         object.Size = UDim2.fromOffset(width, height)
@@ -388,7 +402,7 @@ function Library:CreateWindow(config)
     local dockEdge = "Bottom"
     local uiShown = true
     local windowTransitioning = false
-    local windowMotionHost = Instance.new("CanvasGroup")
+    local windowMotionHost = newUI("CanvasGroup")
     windowMotionHost.Name = "WindowMotion"
     windowMotionHost.AnchorPoint = Vector2.new(0.5, 0.5)
     windowMotionHost.Size = UDim2.fromOffset(0, 0)
@@ -660,6 +674,10 @@ function Library:CreateWindow(config)
         end
     end))
     local function tween(object, properties, duration)
+        if properties.GroupTransparency ~= nil and not object:IsA("CanvasGroup") then
+            properties = table.clone(properties)
+            properties.GroupTransparency = nil
+        end
         local changesColor = false
         for property, value in pairs(properties) do
             if type(value) == "string" and Theme[value] then
@@ -695,7 +713,9 @@ function Library:CreateWindow(config)
             if old then old:Cancel() end
             if immediate then
                 motions[object][property] = nil
-                if type(value) == "string" and Theme[value] then
+                if property == "GroupTransparency" then
+                    setGroupTransparency(object, value)
+                elseif type(value) == "string" and Theme[value] then
                     bindTheme(object, property, value)
                 else
                     object[property] = value
@@ -823,12 +843,12 @@ function Library:CreateWindow(config)
 
         -- The holder is sized by hand from the card. Letting it auto-size would include the glow, which
         -- is sized from the holder, and the two would inflate each other every frame.
-        local holder = Instance.new("CanvasGroup")
+        local holder = newUI("CanvasGroup")
         holder.Name = "Notification"
         holder.BackgroundTransparency = 1
         holder.BorderSizePixel = 0
         holder.LayoutOrder = toastLayoutOrder(toastOrder)
-        holder.GroupTransparency = 1
+        setGroupTransparency(holder, 1)
         holder:SetAttribute("PassInput", true)
         holder.Parent = toastStack
         local cardScale = Instance.new("UIScale")
@@ -1461,7 +1481,7 @@ function Library:CreateWindow(config)
                 if not openDropdown then dropdownOverlay.Visible = false end
             end
             if immediate then
-                panel.GroupTransparency = 1
+                setGroupTransparency(panel, 1)
                 motion(border, { Transparency = 1 }, 0, true)
                 finish()
             else
@@ -1497,7 +1517,7 @@ function Library:CreateWindow(config)
             y = math.clamp(y, 8, math.max(8, available.Y - pickerHeight * uiScale - 8))
             panelTuck = y < origin.Y and 6 or -6
             panel.Position = UDim2.fromOffset(x, y + panelTuck)
-            panel.GroupTransparency = 1
+            setGroupTransparency(panel, 1)
             motion(border, { Transparency = 1 }, 0, true)
             motion(border, { Transparency = 0.65 }, 0.18)
             panel.Visible = true
@@ -1682,7 +1702,7 @@ function Library:CreateWindow(config)
         collapseArrow.Position = UDim2.new(1, -18, 0.5, -8)
         collapseArrow.Rotation = 180
         collapseArrow.Visible = config.Collapsible ~= false
-        local groupContent = Instance.new("CanvasGroup")
+        local groupContent = newUI("CanvasGroup")
         groupContent.Name = "Content"
         groupContent.Size = UDim2.new(1, 0, 0, 0)
         groupContent.AutomaticSize = Enum.AutomaticSize.Y
@@ -1948,7 +1968,7 @@ function Library:CreateWindow(config)
         group:SetCollapsed(config.Collapsed == true, true)
         local insertionSection
         local function row(name, height)
-            local object = Instance.new("CanvasGroup")
+            local object = newUI("CanvasGroup")
             object.Name = name
             object.BackgroundTransparency = 1
             object.Size = UDim2.new(1, 0, 0, height)
@@ -2884,7 +2904,7 @@ function Library:CreateWindow(config)
                     if not openDropdown then dropdownOverlay.Visible = false end
                 end
                 if immediate then
-                    menu.GroupTransparency = 1
+                    setGroupTransparency(menu, 1)
                     motion(menuBorder, { Transparency = 1 }, 0, true)
                     finish()
                 else
@@ -2963,7 +2983,7 @@ function Library:CreateWindow(config)
                 menuTuck = (y < origin.Y and 6 or -6) * factor
                 menu.Size = UDim2.fromOffset(width, height)
                 menu.Position = UDim2.fromOffset(x, y + menuTuck)
-                menu.GroupTransparency = 1
+                setGroupTransparency(menu, 1)
                 motion(menuBorder, { Transparency = 1 }, 0, true)
                 motion(menuBorder, { Transparency = 0.2 }, 0.18)
                 menu.Visible, dropdownOverlay.Visible = true, true
@@ -3306,7 +3326,7 @@ function Library:CreateWindow(config)
                 local function disable(disabled)
                     disabled = disabled == true
                     container:SetAttribute("Disabled", disabled)
-                    container.GroupTransparency = disabled and 0.55 or 0
+                    setGroupTransparency(container, disabled and 0.55 or 0)
                     if type(control) == "table" then control.Disabled = disabled end
                     for _, child in ipairs(container:GetDescendants()) do
                         if child:IsA("GuiButton") then child.Interactable = not disabled end
@@ -3348,7 +3368,7 @@ function Library:CreateWindow(config)
                 self.TabIndicator = rounded("Frame", "Selection", self.TabStrip, 2, 2, 0, 24, "Selected", 5)
             end
             local section = { Name = name, SearchText = name, Index = #self.Sections + 1 }
-            local page = Instance.new("CanvasGroup")
+            local page = newUI("CanvasGroup")
             page.Name = name
             page.Size = UDim2.new(1, 0, 0, 0)
             page.AutomaticSize = Enum.AutomaticSize.Y
@@ -3494,7 +3514,7 @@ function Library:CreateWindow(config)
             if tab.Fade then tab.Fade:Cancel() end
             local active = tab == target
             tab.Page.Visible = active
-            tab.Page.GroupTransparency = active and 1 or 0
+            setGroupTransparency(tab.Page, active and 1 or 0)
             tab.Page.Position = UDim2.fromOffset(0, active and 6 or 0)
             motion(tab.Button, { BackgroundTransparency = active and 0.12 or 1 }, 0.22)
             motion(tab.Scale, { Scale = active and 1.04 or 1 }, 0.22)
@@ -3540,7 +3560,7 @@ function Library:CreateWindow(config)
         tab.Title.Size = UDim2.new(1, -44, 1, 0)
         tab.Title.Visible = false
         tab.Title.TextTruncate = Enum.TextTruncate.AtEnd
-        local page = Instance.new("CanvasGroup")
+        local page = newUI("CanvasGroup")
         page.Name = tab.Name
         page.Size = UDim2.fromScale(1, 1)
         page.BackgroundTransparency = 1
@@ -3865,7 +3885,7 @@ function Library:CreateWindow(config)
         for animation in pairs(themeTweens) do
             animation:Cancel()
         end
-        if keepPopup and openDropdown then openDropdown.Options.GroupTransparency = 0 end
+        if keepPopup and openDropdown then setGroupTransparency(openDropdown.Options, 0) end
         for role, color in pairs(data) do
             if defaultTheme[role] then Theme[role] = typeof(color) == "Color3" and color or Color3.fromHex(color) end
         end
@@ -4071,7 +4091,7 @@ function Library:CreateWindow(config)
         -- button across the bar's edge.
         local card = rounded("CanvasGroup", "SearchCard", dockSearch, 0, 0, 236, 48, "Background", 16)
         card.BackgroundTransparency = 0.04
-        card.GroupTransparency = 1
+        setGroupTransparency(card, 1)
         card.Visible = false
         card.Active = true
         local cardRim = Instance.new("UIStroke")
@@ -4152,7 +4172,7 @@ function Library:CreateWindow(config)
                 boxPadding.PaddingLeft, boxPadding.PaddingRight = UDim.new(0, 0), UDim.new(0, 0)
                 cardRevision = cardRevision + 1
                 card.Visible = false
-                card.GroupTransparency = 1
+                setGroupTransparency(card, 1)
             end
         end
         dockSearch.MouseEnter:Connect(function()
@@ -4421,14 +4441,14 @@ function Library:CreateWindow(config)
             windowMotionHost.Size = UDim2.fromOffset(size.X + hostPadding * 2, size.Y + hostPadding * 2)
             windowMotionHost.Position = UDim2.fromOffset(point.X, point.Y)
             windowMotionScale.Scale = math.max(0.01, minimumScale + (1 - minimumScale) * progress)
-            windowMotionHost.GroupTransparency = 1 - smoothstep(clamped / 0.6)
+            setGroupTransparency(windowMotionHost, 1 - smoothstep(clamped / 0.6))
         end
         finishUIVisibility = function()
             if windowTransitioning then
                 root.Parent = viewport
                 root.Position = savedPosition
                 windowMotionScale.Scale = 1
-                windowMotionHost.GroupTransparency = 0
+                setGroupTransparency(windowMotionHost, 0)
                 windowMotionHost.Visible = false
                 windowTransitioning = false
                 home, savedPosition = nil, nil

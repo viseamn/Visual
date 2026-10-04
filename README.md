@@ -114,13 +114,15 @@ ThemeManager:SaveDefault("My theme")
 
 File operations require the executor's file functions. Studio can use `SaveJSON` / `LoadJSON` and store the JSON through its own persistence code. File/config methods return `ok, err`; JSON export returns a string. Folder names may contain safe subfolders; config/theme names cannot contain path separators and are limited to 64 characters. Listing failures are shown in the settings UI without clearing an existing selection.
 
+Touch-enabled devices use ordinary Frames instead of CanvasGroup textures by default to avoid blank rendering when texture memory is exhausted. Group fade effects are skipped in this mode; visibility and control interactions remain available. Set `CanvasGroups = false` in `CreateWindow` to force this mode on any device, or `CanvasGroups = true` to retain grouped fades. `Example.lua` displays startup errors in a plain on-screen panel and also logs the traceback.
+
 Editing colors, font or the background image, and importing theme data, clears the preset selection and displays `Custom`. `SaveCustomTheme(name)` creates a new theme and refuses to overwrite an existing file. Use the settings panel's `Overwrite theme` button with the desired `Theme name`; it asks for confirmation. The API can explicitly overwrite an existing theme with `SaveCustomTheme(name, true)`.
 
 Config values and theme data are validated before application. A failed write rolls back prior values. Callbacks run after the complete restore; callback failures are reported after application. Unknown IDs are ignored so configs can survive removed controls. Viz uses config schema version 1 and accepts the earlier Base UI schema when IDs still match. Managers expose `new()` for independent instances and accept either `SetLibrary(Library)` or `SetLibrary(Window)`.
 
 ## Validation
 
-The three runtime modules compile with Luau. `tests/ui-regressions.js` passes 50 regression checks covering config cancellation, snapshot and callback failures, rollback, shared name limits, theme overwrite confirmation, preset synchronization, file-list errors, modifier keybinds, slider precision and toggle click/drag gestures. These checks use mocked services and UI controls, plus extracted Library functions; they do not verify in-game rendering.
+The runtime modules and example compile with Luau. `tests/ui-regressions.js` passes 60 regression checks covering config cancellation, snapshot and callback failures, rollback, shared name limits, theme overwrite confirmation, preset synchronization, file-list errors, modifier keybinds, slider precision, toggle click/drag gestures, the mobile Frame rendering fallback and startup error reporting. These checks use mocked services and UI controls, plus extracted Library functions; they do not verify in-game rendering.
 
 ```powershell
 node tests/ui-regressions.js <path-to-luau.exe>
