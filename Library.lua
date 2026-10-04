@@ -955,11 +955,11 @@ function Library:CreateWindow(config)
         end
         return result
     end
-    local function releaseHolds()
+    local function releaseHolds(silent)
         for control in pairs(keybindControls) do
             if control.Holding then
                 control.Holding = false
-                control:Set(false)
+                control:Set(false, silent)
             end
         end
     end
@@ -1028,6 +1028,9 @@ function Library:CreateWindow(config)
                 and control.Keybind == input.KeyCode
             then
                 local held, matches = heldModifiers(), true
+                for name, keys in pairs(modifierKeys) do
+                    if table.find(keys, input.KeyCode) then held[name] = nil end
+                end
                 for name in pairs(modifierKeys) do
                     if (held[name] == true) ~= (control.Modifiers[name] == true) then matches = false end
                 end
@@ -2230,6 +2233,9 @@ function Library:CreateWindow(config)
                     key = result
                 end
                 self.Keybind = key or Enum.KeyCode.Unknown
+                for name, keys in pairs(modifierKeys) do
+                    if table.find(keys, self.Keybind) then self.Modifiers[name] = nil end
+                end
                 self:RefreshKeybind()
             end
             function control:SetModifiers(modifiers)
@@ -2243,7 +2249,9 @@ function Library:CreateWindow(config)
                         name, enabled = enabled, true
                     end
                     assert(modifierKeys[name], "Unknown modifier")
-                    if enabled then self.Modifiers[name] = true end
+                    if enabled and not table.find(modifierKeys[name], self.Keybind) then
+                        self.Modifiers[name] = true
+                    end
                 end
                 self:RefreshKeybind()
                 refreshKeybindMenu()
@@ -2553,10 +2561,16 @@ function Library:CreateWindow(config)
                 end
             end)
             local function bindInput(field, index)
-                field.Focused:Connect(
-                    function() field.Text = string.format("%.4g", isRange and control.Value[index] or control.Value) end
-                )
+                local originalText
+                field.Focused:Connect(function()
+                    field.Text = string.format("%.17g", isRange and control.Value[index] or control.Value)
+                    originalText = field.Text
+                end)
                 field.FocusLost:Connect(function()
+                    if loadingConfig or field.Text == originalText then
+                        control:Set(control.Value, true)
+                        return
+                    end
                     local parsed = tonumber(field.Text)
                     if not parsed or parsed ~= parsed or math.abs(parsed) == math.huge then
                         control:Set(control.Value, true)
@@ -2632,7 +2646,7 @@ function Library:CreateWindow(config)
             input.TextSize = 12
             input.ClearTextOnFocus = false
             input.FocusLost:Connect(function()
-                if options.Callback then options.Callback(input.Text) end
+                if not loadingConfig and options.Callback then options.Callback(input.Text) end
             end)
             persist(
                 options,
@@ -3830,6 +3844,7 @@ function Library:CreateWindow(config)
             self.ContrastLabel.Text =
                 string.format("Text/card contrast: %s (%.1f:1)", ratio >= 4.5 and "good" or "low", ratio)
         end
+        self:SyncPreset(nil)
         return true
     end
     function ThemeManager:GetContrastRatio()
@@ -3841,13 +3856,20 @@ function Library:CreateWindow(config)
         return (math.max(a, b) + 0.05) / (math.min(a, b) + 0.05)
     end
     function ThemeManager:SyncPreset(name)
+        self.Current = name
+        if self.OnPresetChanged then self.OnPresetChanged(name) end
         if not self.PresetSelector then return end
+        if name == nil then
+            self.PresetSelector:Set(nil, true)
+            return
+        end
         for _, entry in ipairs(self.PresetSelector.Entries) do
             if entry.Value == name then
                 self.PresetSelector:Set(name, true)
                 return
             end
         end
+        self.PresetSelector:Set(nil, true)
     end
     function ThemeManager:Export()
         local data = {}
@@ -4839,12 +4861,12 @@ function Library:CreateWindow(config)
             ExportTheme = function() return ThemeManager:Export() end,
             GetFont = function() return fontName end,
             SetLoading = function(value) loadingConfig = value end,
-            CancelInteractions = function()
+            CancelInteractions = function(silent)
                 cancelKeyCapture()
                 closeDropdown(true)
                 finishSlider()
                 finishColorDrag()
-                releaseHolds()
+                releaseHolds(silent)
                 cancelWindowDrag()
                 cancelWindowResize()
                 finishUIVisibility()

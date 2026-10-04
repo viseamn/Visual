@@ -110,14 +110,16 @@ ThemeManager:SaveCustomTheme("My theme")
 ThemeManager:SaveDefault("My theme")
 ```
 
-File operations require the executor's file functions. Studio can use `SaveJSON` / `LoadJSON` and store the JSON through its own persistence code. File/config methods return `ok, err`; JSON export returns a string. Folder names may contain safe subfolders; config/theme names cannot contain path separators.
+File operations require the executor's file functions. Studio can use `SaveJSON` / `LoadJSON` and store the JSON through its own persistence code. File/config methods return `ok, err`; JSON export returns a string. Folder names may contain safe subfolders; config/theme names cannot contain path separators and are limited to 64 characters. Listing failures are shown in the settings UI without clearing an existing selection.
+
+Editing colors, font or the background image, and importing theme data, clears the preset selection and displays `Custom`. `SaveCustomTheme(name)` creates a new theme and refuses to overwrite an existing file. Use the settings panel's `Overwrite theme` button with the desired `Theme name`; it asks for confirmation. The API can explicitly overwrite an existing theme with `SaveCustomTheme(name, true)`.
 
 Config values and theme data are validated before application. A failed write rolls back prior values. Callbacks run after the complete restore; callback failures are reported after application. Unknown IDs are ignored so configs can survive removed controls. Viz uses config schema version 1 and accepts the earlier Base UI schema when IDs still match. Managers expose `new()` for independent instances and accept either `SetLibrary(Library)` or `SetLibrary(Window)`.
 
 ## Validation
 
-The release compiles with Luau and passes `Test/viz_runtime_checks.cjs`: the complete example, ID handling, config/theme round-trips, invalid input, rollback, file operations, nested folders, autoload, detaching/attaching, visibility reversal, bottom navigation, decorative profile, cleanup, and rebinding. These are headless checks with Roblox service mocks. Direct in-game rendering still needs verification; the connected client closed during that check.
+The three runtime modules compile with Luau. `tests/ui-regressions.js` passes 38 regression checks covering config cancellation, snapshot and callback failures, rollback, shared name limits, theme overwrite confirmation, preset synchronization, file-list errors, modifier keybinds and slider precision. These checks use mocked services and UI controls, plus extracted Library functions; they do not verify in-game rendering.
 
 ```powershell
-node Test/viz_runtime_checks.cjs <path-to-luau.exe>
+node tests/ui-regressions.js <path-to-luau.exe>
 ```

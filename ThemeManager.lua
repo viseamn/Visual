@@ -15,15 +15,13 @@ local function newManager()
         context = window._Viz
         Theme, defaultTheme = window.Theme, context.Defaults
         self.BuiltInThemes = context.Theme.BuiltInThemes
+        self.Current = context.Theme.Current
+        context.Theme.OnPresetChanged = function(name) self.Current = name end
         self.Library = library
         return self
     end
     local function safeName(name)
-        return type(name) == "string"
-            and #name > 0
-            and #name <= 80
-            and name:match("^[%w _%-]+$") ~= nil
-            and name:match("%S") ~= nil
+        return bound().Storage.SafeName(name)
     end
     local function hasFiles() return bound().Storage.Available() end
     local function folderPath(manager, category) return bound().Storage.Folder(manager, category) end
@@ -77,9 +75,17 @@ local function newManager()
         if not ok then return false, "Invalid theme JSON" end
         return self:ApplyThemeData(data)
     end
-    function ThemeManager:SaveCustomTheme(name)
+    function ThemeManager:SaveCustomTheme(name, overwrite)
+        bound()
+        if not safeName(name) then return false, "Invalid theme name (maximum 64 characters)" end
         if self.BuiltInThemes[name] then return false, "Choose a custom theme name" end
-        return writeJSON(self, "themes", name, self:SaveJSON())
+        local ok, exists = pcall(function() return isfile(folderPath(self, "themes") .. "/" .. name .. ".json") end)
+        if not ok then return false, exists end
+        if exists and not overwrite then return false, "Theme already exists; use Overwrite theme." end
+        if overwrite and not exists then return false, "Theme not found" end
+        local encoded, content = pcall(function() return self:SaveJSON() end)
+        if not encoded then return false, content end
+        return writeJSON(self, "themes", name, content)
     end
     function ThemeManager:ReloadCustomThemes() return listJSON(self, "themes") end
     function ThemeManager:Delete(name) return deleteJSON(self, "themes", name) end
@@ -110,7 +116,7 @@ local function newManager()
     function ThemeManager:ApplyThemeData(data, keepPopup) return bound().Theme:ApplyThemeData(data, keepPopup) end
     function ThemeManager:GetContrastRatio() return bound().Theme:GetContrastRatio() end
     function ThemeManager:SyncPreset(name)
-        bound().Theme.Current = name
+        self.Current = name
         bound().Theme:SyncPreset(name)
     end
     function ThemeManager:ApplyToTab(tab)
@@ -122,20 +128,29 @@ local function newManager()
         local saved = group:AddTab("Presets")
         local function names()
             local result = { "Default", "Light", "Black", "Mint", "Nord", "Dracula" }
-            for _, name in ipairs(self:ReloadCustomThemes()) do
+            if not hasFiles() then return result end
+            local customNames, err = self:ReloadCustomThemes()
+            if err then report("Refresh themes", false, err) end
+            for _, name in ipairs(customNames) do
                 if not self.BuiltInThemes[name] then table.insert(result, name) end
             end
-            return result
+            return result, err
         end
+        local initialNames = names()
         local selector = saved:AddDropdown({
             Name = "Theme",
-            Options = names(),
-            Default = "Default",
+            Options = initialNames,
+            Default = self.Current and table.find(initialNames, self.Current) and self.Current or initialNames[1],
+            FormatDisplayValue = function(value, fallback) return value == nil and "Custom" or fallback end,
+            AllowNull = true,
             NoSave = true,
             Callback = function(value)
                 if value then
                     local ok, err = self:ApplyTheme(value)
-                    if not ok then report("Theme", ok, err) end
+                    if not ok then
+                        self:SyncPreset(self.Current)
+                        report("Theme", ok, err)
+                    end
                 end
             end,
         })
@@ -165,6 +180,7 @@ local function newManager()
         })
         self.ImageControl = style:AddTextbox({
             Name = "Background Image",
+            Default = context.Theme.BackgroundImage or "",
             Placeholder = "Roblox asset ID",
             NoSave = true,
             Callback = function(value)
@@ -199,11 +215,31 @@ local function newManager()
             Callback = function()
                 local ok, err = self:SaveCustomTheme(nameBox.Text)
                 if ok then
-                    selector:SetValues(names())
-                    selector:Set(nameBox.Text, true)
-                    self.Current = nameBox.Text
+                    local values, listError = names()
+                    if not listError then selector:SetValues(values, true) end
+                    self:SyncPreset(nameBox.Text)
                 end
                 report("Save theme", ok, err)
+            end,
+        })
+        saved:AddButton({
+            Name = "Overwrite theme",
+            Callback = function()
+                local name = nameBox.Text
+                if not safeName(name) or self.BuiltInThemes[name] then
+                    report("Overwrite theme", false, "Enter a saved custom theme name")
+                    return
+                end
+                showDialog({
+                    Title = "Overwrite theme",
+                    Content = 'Replace "' .. name .. '" with the current theme?',
+                    ConfirmText = "Overwrite",
+                    OnConfirm = function()
+                        local ok, err = self:SaveCustomTheme(name, true)
+                        if ok then self:SyncPreset(name) end
+                        report("Overwrite theme", ok, err)
+                    end,
+                })
             end,
         })
         saved:AddButton({
@@ -212,7 +248,13 @@ local function newManager()
         })
         saved:AddButton({
             Name = "Refresh themes",
-            Callback = function() selector:SetValues(names()) end,
+            Callback = function()
+                local values, err = names()
+                if not err then
+                    selector:SetValues(values, true)
+                    self:SyncPreset(self.Current)
+                end
+            end,
         })
         saved:AddButton({
             Name = "Delete custom theme",
@@ -225,7 +267,11 @@ local function newManager()
                     ConfirmText = "Delete",
                     OnConfirm = function()
                         local ok, err = self:Delete(name)
-                        if ok then selector:SetValues(names()) end
+                        if ok then
+                            if self.Current == name then self:SyncPreset(nil) end
+                            local values, listError = names()
+                            if not listError then selector:SetValues(values, true) end
+                        end
                         report("Delete theme", ok, err)
                     end,
                 })
@@ -235,6 +281,7 @@ local function newManager()
         core.ColorControls, core.FontControl, core.ImageControl =
             self.ColorControls, self.FontControl, self.ImageControl
         core.ContrastLabel, core.PresetSelector = self.ContrastLabel, self.PresetSelector
+        self:SyncPreset(self.Current)
         return group
     end
 

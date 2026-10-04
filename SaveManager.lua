@@ -19,11 +19,7 @@ local function newManager()
         return self
     end
     local function safeName(name)
-        return type(name) == "string"
-            and #name > 0
-            and #name <= 80
-            and name:match("^[%w _%-]+$") ~= nil
-            and name:match("%S") ~= nil
+        return bound().Storage.SafeName(name)
     end
     local function hasFiles() return bound().Storage.Available() end
     local function folderPath(manager, category) return bound().Storage.Folder(manager, category) end
@@ -58,7 +54,7 @@ local function newManager()
         if not self.IgnoreTheme then data.Theme = context.ExportTheme() end
         return HttpService:JSONEncode(data)
     end
-    function SaveManager:LoadJSON(content)
+    local function loadJSON(self, content)
         bound()
         local ok, data = pcall(function() return HttpService:JSONDecode(content) end)
         if not ok or type(data) ~= "table" or data.Version ~= 1 or type(data.Controls) ~= "table" then
@@ -73,18 +69,23 @@ local function newManager()
                 end
                 local valid, result = pcall(entry.Validate, saved.Value)
                 if not valid or not result then return false, "Invalid value: " .. id end
-                table.insert(pending, { Id = id, Entry = entry, Value = saved.Value, Previous = entry.Read() })
+                table.insert(pending, { Id = id, Entry = entry, Value = saved.Value })
             end
         end
         if data.Theme and not self.IgnoreTheme then
             local valid, err = ThemeManager:Validate(data.Theme)
             if not valid then return false, err end
         end
-        window._Viz.CancelInteractions()
         table.sort(pending, function(a, b) return a.Id < b.Id end)
         local previousTheme = data.Theme and not self.IgnoreTheme and context.ExportTheme() or nil
+        local previousPreset = ThemeManager.Current
         context.SetLoading(true)
         local applied, err = pcall(function()
+            window._Viz.CancelInteractions(true)
+            for _, item in ipairs(pending) do
+                item.Previous = item.Entry.Read()
+                item.Snapshotted = true
+            end
             for _, item in ipairs(pending) do
                 item.Entry.Write(item.Value)
             end
@@ -95,9 +96,12 @@ local function newManager()
         end)
         if not applied then
             for _, item in ipairs(pending) do
-                pcall(item.Entry.Write, item.Previous)
+                if item.Snapshotted then pcall(item.Entry.Write, item.Previous) end
             end
-            if previousTheme then pcall(ThemeManager.ApplyThemeData, ThemeManager, previousTheme) end
+            if previousTheme then
+                pcall(ThemeManager.ApplyThemeData, ThemeManager, previousTheme)
+                pcall(ThemeManager.SyncPreset, ThemeManager, previousPreset)
+            end
             context.SetLoading(false)
             return false, tostring(err)
         end
@@ -111,6 +115,12 @@ local function newManager()
         context.SetLoading(false)
         if #callbackErrors > 0 then return false, "Values loaded; a callback failed: " .. callbackErrors[1] end
         return true
+    end
+    function SaveManager:LoadJSON(content)
+        local ok, result, err = pcall(loadJSON, self, content)
+        if context then context.SetLoading(false) end
+        if not ok then return false, tostring(result) end
+        return result, err
     end
     function SaveManager:Save(name)
         local ok, content = pcall(function() return self:SaveJSON() end)
@@ -177,11 +187,18 @@ local function newManager()
             files:AddLabel("File storage unavailable. JSON import/export is available through the API.")
         end
         local nameBox = create:AddTextbox({ Name = "Config name", Default = "default", NoSave = true })
-        local selector =
-            files:AddDropdown({ Name = "Saved configs", Options = self:RefreshConfigList(), NoSave = true })
+        local function configNames()
+            if not hasFiles() then return {} end
+            local names, err = self:RefreshConfigList()
+            if err then report("Refresh configs", false, err) end
+            return names, err
+        end
+        local initialNames = configNames()
+        local selector = files:AddDropdown({ Name = "Saved configs", Options = initialNames, NoSave = true })
         local autoLabel = startup:AddLabel("Autoload: " .. (self:GetAutoloadConfig() or "None"))
         local function refresh()
-            selector:SetValues(self:RefreshConfigList())
+            local names, err = configNames()
+            if not err then selector:SetValues(names) end
             autoLabel.Text = "Autoload: " .. (self:GetAutoloadConfig() or "None")
         end
         create:AddButton({
