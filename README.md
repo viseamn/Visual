@@ -69,7 +69,36 @@ Toggle, checkbox, slider, dropdown, color picker, and keybind return control obj
 
 Toggle switches support clicking and horizontal dragging with a mouse or touch. Drag the thumb toward the right to enable or left to disable; the value commits on release. Canceling a drag leaves the current value unchanged. `Always` mode keeps the toggle enabled.
 
-Controls accept `Callback`, `NoSave`, `Disabled`, and `Visible` where applicable. There are no hover tooltips; a `Tooltip` string is still matched by search. Use `control:SetDisabled(true)` / `SetVisible(false)` for control objects, or `Group:SetControlDisabled(instance, true)` / `SetControlVisible(instance, false)` for returned instances.
+Controls accept `Callback`, `NoSave`, `Disabled`, and `Visible` where applicable. `Tooltip` appears after a short mouse hover and is also matched by search; `DisabledTooltip` supplies the disabled-state explanation. Use `control:SetDisabled(true)` / `SetVisible(false)` for control objects, or `Group:SetControlDisabled(instance, true)` / `SetControlVisible(instance, false)` for returned instances.
+
+### Control adapters and input validation
+
+Existing constructor return types are preserved. `Group:GetControl(control)` (also available on sections and dependency boxes) returns the control API for either a returned Instance or a control object. It exposes `Frame`, `SetText`, `SetDisabled`, `SetVisible`, `OnChanged` and `Destroy`. Destroy removes the entire control row. Value controls expose `SetValue`; input adapters expose the committed string through `Value`. `OnChanged` returns a connection with `Disconnect()`. Silent writes suppress change callbacks while still updating dependencies.
+
+```lua
+local Input = Group:AddInput("Count", {
+    Text = "Count", Default = "10", Numeric = true, MaxLength = 3,
+    AllowEmpty = false, EmptyReset = "10", Finished = true,
+    VerifyValue = function(text) return tonumber(text) <= 100 end,
+    Tooltip = "Enter a number up to 100, then press Enter",
+})
+local Control = Group:GetControl(Input)
+Control:OnChanged(function(value) print(value) end)
+Control:SetValue("25")
+```
+
+Input validates both submitted edits and imported config values. Invalid edits restore the last committed value; invalid API/config values are rejected. `MaxLength` counts Unicode characters. `Finished = true` commits on Enter and discards edits on other blur events; `Finished = false` commits valid text while typing. Omitting `Finished` keeps commit-on-blur behavior. `ClearTextOnFocus` and `ClearTextOnBlur` are supported; clearing the display on blur preserves the committed value for saving. `AllowEmpty` defaults to true. An empty allowed string bypasses `Numeric` and `VerifyValue` checks.
+
+### Dependency boxes
+
+```lua
+local Enabled = Group:AddToggle("Advanced", {Text = "Advanced", Default = false})
+local Dep = Group:AddDependencyBox()
+Dep:AddSlider("AdvancedSpeed", {Text = "Speed", Min = 0, Max = 100, Default = 50})
+Dep:SetupDependencies({{Enabled, true}})
+```
+
+Every `{control, expectedValue}` must match for the box's rows to appear. Scalar values use equality; multi dropdowns require the selected key. Disabled or destroyed sources hide the rows. A dependency can use a returned control object or an input adapter from `GetControl`. Same-group input Instances are resolved automatically. Sources from another group must be passed as adapters. Dependency visibility combines with user visibility and search; restoring config values updates dependencies even before callbacks run. Section dependency boxes retain section ownership. `SetupDependencies` replaces previous subscriptions; `Destroy` removes the box's rows and subscriptions. Nested dependency boxes and `AddDependencyGroupbox` are not implemented.
 
 Groupboxes have `Detach`, `Attach`, `IsDetached`, `SetCollapsed`, and `ToggleCollapsed`. Drag the header to detach; release it inside the main window to attach again. `Group:AddTab("General")` creates a section supporting the same control constructors. `AddTextbox` aliases `AddInput`, and `AddDoubleSlider` aliases `AddRangeSlider`.
 
@@ -126,4 +155,7 @@ The runtime modules and example compile with Luau. `tests/ui-regressions.js` pas
 
 ```powershell
 node tests/ui-regressions.js <path-to-luau.exe>
+node tests/ui-features.js <path-to-luau.exe>
 ```
+
+The feature suite adds 43 behavioral checks for input validation/commit modes, listener cleanup and dependency restoration/visibility. Hover rendering and layout still require verification in Roblox. Obsidian-derived features and attribution are documented in `THIRD_PARTY_NOTICES.md`; retain it and `OBSIDIAN_LICENSE.txt` when distributing the library.

@@ -1,4 +1,27 @@
 -- Viz 1.0.3
+--[[
+Obsidian feature reference/adaptation notice:
+MIT License
+Copyright (c) 2025 deividcomsono
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+]]
 local Library = { Version = "1.0.3" }
 local function safeName(name)
     return type(name) == "string" and #name > 0 and #name <= 64 and name:match("^[%w _%-]+$") and name:match("%S")
@@ -77,6 +100,65 @@ Library._Storage = {
 -- Layout style -> the screen edge the tab bar docks to.
 local layoutEdges = { ["Bottom bar"] = "Bottom", ["Top bar"] = "Top", ["Left bar"] = "Left", ["Right bar"] = "Right" }
 local layoutStyles = { "Bottom bar", "Top bar", "Left bar", "Right bar" }
+
+-- Obsidian-compatible feature adapters. See THIRD_PARTY_NOTICES.md.
+local function featureSignal()
+    local listeners = {}
+    local signal = {}
+    function signal:Connect(callback)
+        assert(type(callback) == "function", "Expected a callback")
+        local connection = { Connected = true }
+        listeners[connection] = callback
+        function connection:Disconnect()
+            self.Connected = false
+            listeners[self] = nil
+        end
+        return connection
+    end
+    function signal:Fire(...)
+        local pending = {}
+        for connection, callback in pairs(listeners) do pending[#pending + 1] = { connection, callback } end
+        for _, entry in ipairs(pending) do
+            if entry[1].Connected then
+                local ok, err = pcall(entry[2], ...)
+                if not ok then warn(err) end
+            end
+        end
+    end
+    function signal:Clear()
+        for connection in pairs(listeners) do connection:Disconnect() end
+    end
+    return signal
+end
+
+local function validInput(value, options)
+    if type(value) ~= "string" then return false end
+    if options.MaxLength and utf8.len(value) then
+        if utf8.len(value) > options.MaxLength then return false end
+    elseif options.MaxLength then return false end
+    if value == "" then return options.AllowEmpty ~= false end
+    if options.Numeric then
+        local number = tonumber(value)
+        if not number or number ~= number or math.abs(number) == math.huge then return false end
+    end
+    if options.VerifyValue then
+        local ok, accepted = pcall(options.VerifyValue, value)
+        if not ok or not accepted then return false end
+    end
+    return true
+end
+
+local function dependenciesMatch(dependencies)
+    for _, dependency in ipairs(dependencies) do
+        local control, expected = dependency[1], dependency[2]
+        if control.Destroyed or control.Disabled then return false end
+        local value = control.Value
+        if type(value) == "table" then
+            if value[expected] ~= true then return false end
+        elseif value ~= expected then return false end
+    end
+    return true
+end
 
 function Library:CreateWindow(config)
     config = config or {}
@@ -1183,13 +1265,15 @@ function Library:CreateWindow(config)
                         or searchMatches(element.Name, query)
                         or searchMatches(element:GetAttribute("SearchText"), query)
                         or (section and searchMatches(section.Name, query))
-                    element.Visible = element:GetAttribute("UserVisible") ~= false and match == true
+                    element.Visible = element:GetAttribute("UserVisible") ~= false
+                        and element:GetAttribute("DependencyVisible") ~= false and match == true
                     if element.Visible then
                         matched = true
                         if section then sections[section] = true end
                     end
                 end
                 matched = matched or nameMatch
+                matched = matched and group.DependencyVisible ~= false
                 group.Frame.Visible = matched
                 if group.DetachedWindow then group.DetachedWindow.Visible = matched end
                 if matched then visibleGroups = visibleGroups + 1 end
@@ -1644,11 +1728,67 @@ function Library:CreateWindow(config)
         return true
     end
 
+    local tooltip = { Owner = nil, Token = 0 }
+    function tooltip:Hide(owner)
+        if owner and self.Owner ~= owner then return end
+        self.Token = self.Token + 1
+        self.Owner = nil
+        if self.Frame then self.Frame.Visible = false end
+    end
+    function tooltip:Bind(owner, info)
+        if not info.Tooltip and not info.DisabledTooltip then return end
+        owner.MouseEnter:Connect(function()
+            self:Hide()
+            self.Owner = owner
+            local token = self.Token
+            task.delay(0.35, function()
+                if self.Token ~= token or self.Owner ~= owner or not owner.Parent then return end
+                local text = owner:GetAttribute("Disabled") and info.DisabledTooltip or info.Tooltip
+                if not text or text == "" then return end
+                if not self.Frame then
+                    self.Frame = rounded("Frame", "Tooltip", viewport, 0, 0, 260, 0, "Card", 6)
+                    self.Frame.AutomaticSize = Enum.AutomaticSize.Y
+                    self.Frame.ZIndex = 240
+                    local padding = Instance.new("UIPadding")
+                    padding.PaddingTop, padding.PaddingBottom = UDim.new(0, 8), UDim.new(0, 8)
+                    padding.PaddingLeft, padding.PaddingRight = UDim.new(0, 10), UDim.new(0, 10)
+                    padding.Parent = self.Frame
+                    self.Label = label(self.Frame, "", 12)
+                    self.Label.Size = UDim2.new(1, 0, 0, 0)
+                    self.Label.AutomaticSize = Enum.AutomaticSize.Y
+                    self.Label.TextWrapped = true
+                    self.Label.ZIndex = 241
+                end
+                self.Label.Text = tostring(text)
+                self.Frame.Visible = true
+            end)
+        end)
+        owner.MouseLeave:Connect(function() self:Hide(owner) end)
+        owner.Destroying:Connect(function() self:Hide(owner) end)
+    end
+    track(game:GetService("RunService").RenderStepped:Connect(function()
+        if not tooltip.Owner then return end
+        local ancestor = tooltip.Owner
+        while ancestor and ancestor ~= screen do
+            if ancestor:IsA("GuiObject") and not ancestor.Visible then tooltip:Hide(); return end
+            ancestor = ancestor.Parent
+        end
+        if dialogOpen then tooltip:Hide(); return end
+        if tooltip.Frame and tooltip.Frame.Visible then
+            local point = UserInputService:GetMouseLocation() - viewport.AbsolutePosition
+            local size = tooltip.Frame.AbsoluteSize
+            local x = math.clamp(point.X + 14, 0, math.max(0, viewport.AbsoluteSize.X - size.X))
+            local y = point.Y + 18
+            if y + size.Y > viewport.AbsoluteSize.Y then y = point.Y - size.Y - 8 end
+            tooltip.Frame.Position = UDim2.fromOffset(x, math.max(0, y))
+        end
+    end))
+
     local function addGroup(tab, config)
         config = config or {}
         local side = config.Side or "Left"
         assert(side == "Left" or side == "Right", "Group Side must be Left or Right")
-        local group = { Name = config.Name or "Group", Elements = {}, RowSections = {} }
+        local group = { Name = config.Name or "Group", Elements = {}, RowSections = {}, RowControls = {} }
         group.SearchText = group.Name
         local frame = rounded("Frame", group.Name, tab.Columns[side], 0, 0, 0, 0, "Card", 12)
         frame.Size = UDim2.new(1, config.FrameInset or -6, 0, 0)
@@ -1967,6 +2107,7 @@ function Library:CreateWindow(config)
         end)
         group:SetCollapsed(config.Collapsed == true, true)
         local insertionSection
+        local inputAdapters = {}
         local function row(name, height)
             local object = newUI("CanvasGroup")
             object.Name = name
@@ -2698,6 +2839,9 @@ function Library:CreateWindow(config)
         group.AddDoubleSlider = group.AddRangeSlider
         function group:AddTextbox(options)
             options = options or {}
+            assert(options.MaxLength == nil or (type(options.MaxLength) == "number"
+                and options.MaxLength >= 0 and options.MaxLength % 1 == 0), "Invalid MaxLength")
+            assert(options.VerifyValue == nil or type(options.VerifyValue) == "function", "Invalid VerifyValue")
             local container = row(options.Name or "Textbox", options.MultiLine and 106 or 28)
             local text = label(container, options.Name or "Textbox")
             text.Size = options.MultiLine and UDim2.new(1, 0, 0, 20) or UDim2.new(0.48, -8, 1, 0)
@@ -2713,27 +2857,60 @@ function Library:CreateWindow(config)
             input.MultiLine = options.MultiLine == true
             input.TextWrapped = options.MultiLine == true
             input.TextYAlignment = options.MultiLine and Enum.TextYAlignment.Top or Enum.TextYAlignment.Center
-            input.Text = options.Default or ""
+            local initial = options.Default or options.EmptyReset or ""
+            assert(validInput(initial, options), "Invalid input default")
+            input.Text = initial
             input.PlaceholderText = options.Placeholder or "Enter text"
             bindTheme(input, "PlaceholderColor3", "Muted")
             bindTheme(input, "TextColor3", "Text")
             setUIFont(input)
             input.TextSize = 12
-            input.ClearTextOnFocus = false
-            input.FocusLost:Connect(function()
-                if not loadingConfig and options.Callback then options.Callback(input.Text) end
+            input.ClearTextOnFocus = options.ClearTextOnFocus == true
+            local committed, editing = initial, false
+            local adapter = {}
+            local function commit(value, silent)
+                assert(validInput(value, options), "Invalid input value")
+                local changed = committed ~= value
+                committed = value
+                editing = true
+                input.Text = value
+                editing = false
+                if adapter.StateChanged then adapter.StateChanged:Fire() end
+                if changed and not silent and not loadingConfig and options.Callback then options.Callback(value) end
+            end
+            adapter.SetValue = function(_, value, silent) commit(value, silent) end
+            inputAdapters[input] = adapter
+            input:GetPropertyChangedSignal("Text"):Connect(function()
+                if editing then return end
+                if validInput(input.Text, options) then
+                    if not input:IsFocused() then commit(input.Text, true)
+                    elseif options.Finished == false then commit(input.Text, false) end
+                end
+            end)
+            input.FocusLost:Connect(function(enterPressed)
+                local value = input.Text
+                if value == "" and options.AllowEmpty == false then value = options.EmptyReset or committed end
+                if not validInput(value, options) then value = committed end
+                if options.Finished == true and not enterPressed then value = committed end
+                commit(value, false)
+                if options.ClearTextOnBlur then
+                    editing = true
+                    input.Text = ""
+                    editing = false
+                end
             end)
             persist(
                 options,
                 "Textbox",
                 container,
-                function() return input.Text end,
-                function(value) input.Text = value end,
-                function(value) return type(value) == "string" end,
+                function() return committed end,
+                function(value) commit(value, true) end,
+                function(value) return validInput(value, options) end,
                 function()
-                    if options.Callback then options.Callback(input.Text) end
+                    if options.Callback then options.Callback(committed) end
                 end
             )
+            inputAdapters[input].GetValue = function() return committed end
             return input
         end
         function group:AddDropdown(options)
@@ -3280,6 +3457,11 @@ function Library:CreateWindow(config)
         end
 
         local stateByControl = {}
+        function group:GetControl(control)
+            local state = stateByControl[control]
+            assert(state, "Control does not belong to this card")
+            return state.API
+        end
         function group:SetControlDisabled(control, disabled)
             assert(stateByControl[control], "Control does not belong to this card")
             stateByControl[control].Disable(disabled)
@@ -3303,10 +3485,52 @@ function Library:CreateWindow(config)
         }) do
             local original = group[method]
             group[method] = function(self, options)
+                local changed, stateChanged = featureSignal(), featureSignal()
+                if type(options) == "table" then
+                    options = table.clone(options)
+                    local callback = options.Callback
+                    options.Callback = function(...)
+                        stateChanged:Fire()
+                        changed:Fire(...)
+                        if callback then callback(...) end
+                    end
+                end
                 local control = original(self, options)
                 local container = group.Elements[#group.Elements]
                 local config = type(options) == "table" and options or {}
                 container:SetAttribute("SearchText", config.Tooltip or "")
+                tooltip:Bind(container, config)
+                local api = type(control) == "table" and control or {}
+                api.Frame = container
+                api.Instance = type(control) ~= "table" and control or nil
+                api.Type = method:sub(4)
+                api._StateChanged = stateChanged
+                function api:OnChanged(callback) return changed:Connect(callback) end
+                function api:Destroy() container:Destroy() end
+                function api:SetText(value)
+                    value = tostring(value)
+                    container.Name = value
+                    local text = container:FindFirstChildWhichIsA("TextLabel")
+                    if text then text.Text = value
+                    elseif typeof(control) == "Instance" and control:IsA("TextButton") then control.Text = value end
+                    filterCards()
+                end
+                if inputAdapters[control] then
+                    local adapter = inputAdapters[control]
+                    adapter.StateChanged = stateChanged
+                    api.SetValue = adapter.SetValue
+                    setmetatable(api, { __index = function(_, key)
+                        if key == "Value" then return adapter.GetValue() end
+                    end })
+                    container.Destroying:Connect(function() inputAdapters[control] = nil end)
+                elseif type(control) == "table" and control.Set then
+                    local set = control.Set
+                    control.Set = function(self, ...)
+                        set(self, ...)
+                        stateChanged:Fire()
+                    end
+                    control.SetValue = control.Set
+                end
                 local function stopInteraction()
                     if activeToggleDrag and activeToggleDrag.Control == control then cancelToggleDrag() end
                     finishSlider()
@@ -3328,6 +3552,7 @@ function Library:CreateWindow(config)
                     container:SetAttribute("Disabled", disabled)
                     setGroupTransparency(container, disabled and 0.55 or 0)
                     if type(control) == "table" then control.Disabled = disabled end
+                    api.Disabled = disabled
                     for _, child in ipairs(container:GetDescendants()) do
                         if child:IsA("GuiButton") then child.Interactable = not disabled end
                         if child:IsA("TextBox") then
@@ -3337,24 +3562,33 @@ function Library:CreateWindow(config)
                     end
                     if disabled then stopInteraction() end
                     refreshKeybindMenu()
+                    stateChanged:Fire()
                 end
+                api._CancelInteraction = stopInteraction
+                group.RowControls[container] = api
                 local function visible(value)
                     container:SetAttribute("UserVisible", value ~= false)
                     filterCards()
                     if not table.find(tab.Groups, group) then container.Visible = value ~= false end
                     if not container.Visible then stopInteraction() end
                 end
-                stateByControl[control] = { Disable = disable, Visible = visible }
-                if type(control) == "table" then
-                    control.Frame = container
-                    function control:SetDisabled(value) disable(value) end
-                    function control:SetVisible(value) visible(value) end
-                end
+                stateByControl[control] = { Disable = disable, Visible = visible, API = api }
+                function api:SetDisabled(value) disable(value) end
+                function api:SetVisible(value) visible(value) end
                 disable(config.Disabled)
                 visible(config.Visible)
                 container.Destroying:Connect(function()
                     if activeSlider and activeSlider.Control == control then finishSlider() end
                     stateByControl[control] = nil
+                    api.Destroyed = true
+                    stateChanged:Fire()
+                    changed:Clear()
+                    stateChanged:Clear()
+                    local index = table.find(group.Elements, container)
+                    if index then table.remove(group.Elements, index) end
+                    group.RowSections[container] = nil
+                    group.RowControls[container] = nil
+                    task.defer(function() if uiAlive and frame.Parent then filterCards() end end)
                 end)
                 return control
             end
@@ -3431,6 +3665,7 @@ function Library:CreateWindow(config)
                 "AddDivider",
                 "AddLabel",
                 "AddButton",
+                "AddDependencyBox",
             }) do
                 section[method] = function(_, options, info)
                     insertionSection = section
@@ -3448,6 +3683,7 @@ function Library:CreateWindow(config)
                 button.BackgroundTransparency = 1
             end
             section.AddInput = section.AddTextbox
+            function section:GetControl(control) return group:GetControl(control) end
             return section
         end
 
@@ -3497,6 +3733,82 @@ function Library:CreateWindow(config)
         group.AddInput = group.AddTextbox
         group.AddCheckboxes = group.AddCheckbox
         group.AddDoubleSlider = group.AddRangeSlider
+
+        local dependencyBoxes = {}
+        local function updateDependencyRows()
+            for _, element in ipairs(group.Elements) do
+                local visible = true
+                for box in pairs(dependencyBoxes) do
+                    if box.Rows[element] and not box.Visible then visible = false; break end
+                end
+                element:SetAttribute("DependencyVisible", visible)
+                if not visible and group.RowControls[element] then group.RowControls[element]._CancelInteraction() end
+            end
+            filterCards()
+        end
+        function group:AddDependencyBox()
+            local box = { Rows = {}, Dependencies = {}, Visible = true, Connections = {}, Destroyed = false }
+            local section = insertionSection
+            dependencyBoxes[box] = true
+            function box:Update()
+                if self.Destroyed then return end
+                self.Visible = dependenciesMatch(self.Dependencies)
+                updateDependencyRows()
+            end
+            function box:SetupDependencies(dependencies)
+                assert(not self.Destroyed, "Dependency box is destroyed")
+                assert(type(dependencies) == "table", "Expected dependencies table")
+                local validated = {}
+                for _, dependency in ipairs(dependencies) do
+                    assert(type(dependency) == "table" and dependency[1] ~= nil
+                        and dependency[2] ~= nil, "Expected {control, value}")
+                    local control = dependency[1]
+                    if typeof(control) == "Instance" then control = group:GetControl(control) end
+                    assert(type(control) == "table" and control._StateChanged, "Use a Viz control or GetControl()")
+                    validated[#validated + 1] = { control, dependency[2] }
+                end
+                for _, connection in ipairs(self.Connections) do connection:Disconnect() end
+                self.Connections = {}
+                self.Dependencies = validated
+                for _, dependency in ipairs(validated) do
+                    self.Connections[#self.Connections + 1] = dependency[1]._StateChanged:Connect(function() self:Update() end)
+                end
+                self:Update()
+            end
+            function box:Destroy()
+                if self.Destroyed then return end
+                self.Destroyed = true
+                dependencyBoxes[self] = nil
+                for _, connection in ipairs(self.Connections) do connection:Disconnect() end
+                for element in pairs(self.Rows) do element:Destroy() end
+                self.Rows = {}
+                updateDependencyRows()
+            end
+            function box:GetControl(control) return group:GetControl(control) end
+            for _, method in ipairs({ "AddToggle", "AddCheckbox", "AddSlider", "AddRangeSlider", "AddDropdown",
+                "AddTextbox", "AddColorPicker", "AddKeybind", "AddButton", "AddLabel", "AddDivider" }) do
+                box[method] = function(_, ...)
+                    assert(not box.Destroyed, "Dependency box is destroyed")
+                    local previous = insertionSection
+                    insertionSection = section
+                    local ok, control = pcall(group[method], group, ...)
+                    insertionSection = previous
+                    if not ok then error(control, 2) end
+                    local element = group.Elements[#group.Elements]
+                    box.Rows[element] = true
+                    element.Destroying:Connect(function() box.Rows[element] = nil end)
+                    box:Update()
+                    return control
+                end
+            end
+            box.AddInput, box.AddDoubleSlider = box.AddTextbox, box.AddRangeSlider
+            frame.Destroying:Connect(function()
+                box.Destroyed = true
+                for _, connection in ipairs(box.Connections) do connection:Disconnect() end
+                dependencyBoxes[box] = nil
+            end)
+            return box
+        end
 
         table.insert(tab.Groups, group)
         filterCards()
