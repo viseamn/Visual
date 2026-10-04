@@ -1218,8 +1218,9 @@ function Library:CreateWindow(config)
         panelScale.Parent = panel
         local border = Instance.new("UIStroke")
         bindTheme(border, "Color", "Border")
-        border.Transparency = 0.65
+        border.Transparency = 1
         border.Parent = panel
+        local panelTuck = -6
 
         local square = rounded("TextButton", "SaturationValue", panel, 14, 11, 146, 146, Color3.new(1, 1, 1), 4)
         square.BackgroundTransparency = 1
@@ -1449,10 +1450,18 @@ function Library:CreateWindow(config)
                 if not openDropdown then dropdownOverlay.Visible = false end
             end
             if immediate then
+                panel.GroupTransparency = 1
+                motion(border, { Transparency = 1 }, 0, true)
                 finish()
             else
-                self.Animation = tween(panel, { GroupTransparency = 1 }, 0.12)
-                task.delay(animationDuration(0.12), finish)
+                -- The UIStroke on the CanvasGroup is not faded by GroupTransparency, so fade it separately.
+                local rest = panel.Position
+                self.Animation = tween(panel, {
+                    GroupTransparency = 1,
+                    Position = UDim2.fromOffset(rest.X.Offset, rest.Y.Offset + panelTuck),
+                }, 0.14)
+                motion(border, { Transparency = 1 }, 0.1)
+                task.delay(animationDuration(0.14), finish)
             end
         end
         function picker:Open()
@@ -1475,8 +1484,11 @@ function Library:CreateWindow(config)
                 or origin.Y - pickerHeight * uiScale - 6
             x = math.clamp(x, 8, math.max(8, available.X - pickerWidth * uiScale - 8))
             y = math.clamp(y, 8, math.max(8, available.Y - pickerHeight * uiScale - 8))
-            panel.Position = UDim2.fromOffset(x, y + 4)
+            panelTuck = y < origin.Y and 6 or -6
+            panel.Position = UDim2.fromOffset(x, y + panelTuck)
             panel.GroupTransparency = 1
+            motion(border, { Transparency = 1 }, 0, true)
+            motion(border, { Transparency = 0.65 }, 0.18)
             panel.Visible = true
             dropdownOverlay.Visible = true
             self.Animation = tween(panel, { GroupTransparency = 0, Position = UDim2.fromOffset(x, y) }, 0.18)
@@ -2664,8 +2676,9 @@ function Library:CreateWindow(config)
             menuScale.Parent = menu
             local menuBorder = Instance.new("UIStroke")
             bindTheme(menuBorder, "Color", "Border")
-            menuBorder.Transparency = 0.2
+            menuBorder.Transparency = 1
             menuBorder.Parent = menu
+            local menuTuck = -6
             local list = Instance.new("ScrollingFrame")
             list.Name = "Choices"
             list.Position = UDim2.fromOffset(6, 6)
@@ -2802,10 +2815,19 @@ function Library:CreateWindow(config)
                     if not openDropdown then dropdownOverlay.Visible = false end
                 end
                 if immediate then
+                    menu.GroupTransparency = 1
+                    motion(menuBorder, { Transparency = 1 }, 0, true)
                     finish()
                 else
-                    self.Animation = tween(menu, { GroupTransparency = 1 }, 0.12)
-                    task.delay(animationDuration(0.12), finish)
+                    -- The border is a UIStroke on the CanvasGroup itself, which GroupTransparency does not
+                    -- fade; without its own fade it lingers as an empty outline. Slide back toward the button.
+                    local rest = menu.Position
+                    self.Animation = tween(menu, {
+                        GroupTransparency = 1,
+                        Position = UDim2.fromOffset(rest.X.Offset, rest.Y.Offset + menuTuck),
+                    }, 0.14)
+                    motion(menuBorder, { Transparency = 1 }, 0.1)
+                    task.delay(animationDuration(0.14), finish)
                 end
             end
             function control:Set(value, silent)
@@ -2868,9 +2890,13 @@ function Library:CreateWindow(config)
                     math.max(8, available.X - width * factor - 8)
                 )
                 y = math.clamp(y, 8, math.max(8, available.Y - height * factor - 8))
+                -- Grows out of the button: from just above when it opens below it, and vice versa.
+                menuTuck = (y < origin.Y and 6 or -6) * factor
                 menu.Size = UDim2.fromOffset(width, height)
-                menu.Position = UDim2.fromOffset(x, y + 4 * factor)
+                menu.Position = UDim2.fromOffset(x, y + menuTuck)
                 menu.GroupTransparency = 1
+                motion(menuBorder, { Transparency = 1 }, 0, true)
+                motion(menuBorder, { Transparency = 0.2 }, 0.18)
                 menu.Visible, dropdownOverlay.Visible = true, true
                 local selectedIndex = 1
                 for index, entry in ipairs(self.Entries) do
