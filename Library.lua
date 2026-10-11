@@ -4048,26 +4048,35 @@ function Library:CreateWindow(config)
         return group
     end
 
-    local function selectTab(selected)
+    -- `restyle` only repaints the tab buttons (after the bar changes style) without switching pages.
+    local function selectTab(selected, restyle)
         local target = type(selected) == "table" and selected or tabs[selected]
-        if not target or activeTab == target then return end
-        cancelKeyCapture()
-        closeDropdown()
-        finishSlider()
-        cancelToggleDrag()
-        for _, tab in ipairs(tabs) do
-            if tab.Fade then tab.Fade:Cancel() end
-            local active = tab == target
-            tab.Page.Visible = active
-            setGroupTransparency(tab.Page, active and 1 or 0)
-            tab.Page.Position = UDim2.fromOffset(0, active and 6 or 0)
-            motion(tab.Button, { BackgroundTransparency = active and 0.12 or 1 }, 0.22)
-            motion(tab.Scale, { Scale = active and 1.04 or 1 }, 0.22)
-            motion(tab.Stroke, { Transparency = active and 0.18 or 1 }, 0.22)
-            tab.Glow.Target = active and 1 or 0
-            tweenIcon(tab.Icon, "Icon")
-            tween(tab.Icon, { ImageTransparency = active and 0 or 0.4 }, 0.16)
+        if not target or (activeTab == target and not restyle) then return end
+        local strip = dockEdge == "Top"
+        if not restyle then
+            cancelKeyCapture()
+            closeDropdown()
+            finishSlider()
+            cancelToggleDrag()
         end
+        for _, tab in ipairs(tabs) do
+            local active = tab == target
+            if not restyle then
+                if tab.Fade then tab.Fade:Cancel() end
+                tab.Page.Visible = active
+                setGroupTransparency(tab.Page, active and 1 or 0)
+                tab.Page.Position = UDim2.fromOffset(0, active and 6 or 0)
+            end
+            -- The strip marks the active tab with a soft pill only: no rim, glow or lift.
+            motion(tab.Button, { BackgroundTransparency = active and 0.12 or 1 }, 0.22)
+            motion(tab.Scale, { Scale = active and not strip and 1.04 or 1 }, 0.22)
+            motion(tab.Stroke, { Transparency = active and not strip and 0.18 or 1 }, 0.22)
+            tab.Glow.Target = active and not strip and 1 or 0
+            tweenIcon(tab.Icon, strip and (active and "Text" or "Muted") or "Icon")
+            tween(tab.Icon, { ImageTransparency = (active or strip) and 0 or 0.4 }, 0.16)
+            tween(tab.Title, { TextColor3 = active and "Text" or "Muted" }, 0.16)
+        end
+        if restyle then return end
         activeTab = target
         target.Fade = tween(target.Page, { GroupTransparency = 0, Position = UDim2.fromOffset(0, 0) }, 0.3)
         filterCards()
@@ -4105,6 +4114,12 @@ function Library:CreateWindow(config)
         tab.Title.Size = UDim2.new(1, -44, 1, 0)
         tab.Title.Visible = false
         tab.Title.TextTruncate = Enum.TextTruncate.AtEnd
+        setUIFont(tab.Title, true)
+        bindTheme(tab.Title, "TextColor3", "Muted")
+        -- Strip tabs are sized to their label, which is only measured once the font has loaded.
+        tab.Title:GetPropertyChangedSignal("TextBounds"):Connect(function()
+            if dockEdge == "Top" then refreshDockLayout() end
+        end)
         local page = newUI("CanvasGroup")
         page.Name = tab.Name
         page.Size = UDim2.fromScale(1, 1)
@@ -4158,10 +4173,17 @@ function Library:CreateWindow(config)
         local hovering = false
         local function navigationFeedback(pressed)
             local selected = activeTab == tab
-            motion(tab.Scale, { Scale = pressed and 0.94 or ((selected or hovering) and 1.04 or 1) }, 0.16)
+            local strip = dockEdge == "Top"
+            local lifted = (selected or hovering) and not strip
+            motion(tab.Scale, { Scale = pressed and (strip and 0.97 or 0.94) or (lifted and 1.04 or 1) }, 0.16)
             motion(button, { BackgroundTransparency = selected and 0.12 or (hovering and 0.62 or 1) }, 0.16)
-            motion(stroke, { Transparency = selected and 0.18 or (hovering and 0.75 or 1) }, 0.16)
-            motion(tab.Icon, { ImageTransparency = (selected or hovering) and 0 or 0.4 }, 0.16)
+            motion(stroke, { Transparency = strip and 1 or (selected and 0.18 or (hovering and 0.75 or 1)) }, 0.16)
+            if strip then
+                tweenIcon(tab.Icon, (selected or hovering) and "Text" or "Muted")
+                tween(tab.Title, { TextColor3 = (selected or hovering) and "Text" or "Muted" }, 0.16)
+            else
+                motion(tab.Icon, { ImageTransparency = (selected or hovering) and 0 or 0.4 }, 0.16)
+            end
         end
         button.MouseEnter:Connect(function()
             hovering = true
@@ -4599,7 +4621,6 @@ function Library:CreateWindow(config)
     profile.AnchorPoint = Vector2.new(1, 0.5)
     profile.Position = UDim2.new(1, -12, 0.5, 0)
     profile.ClipsDescendants = true
-    profile:FindFirstChildOfClass("UICorner").CornerRadius = UDim.new(0.5, 0)
     local profileRim = Instance.new("UIStroke")
     profileRim.Color = Color3.fromRGB(239, 228, 255)
     profileRim.Transparency = 0.68
@@ -4668,6 +4689,10 @@ function Library:CreateWindow(config)
         local function refresh()
             local active = box:IsFocused()
             tween(dockSearch, { BackgroundColor3 = (hovering or active) and "Hover" or "Search" }, 0.16)
+            -- On the top strip the button is a bare glyph that only gets a backdrop on hover.
+            if dockEdge == "Top" then
+                motion(dockSearch, { BackgroundTransparency = (hovering or active) and 0.4 or 1 }, 0.16)
+            end
             tween(rim, { Color = active and "Accent" or "Text" }, 0.16)
             motion(rim, { Transparency = active and 0.35 or 0.9 }, 0.16)
             -- The glyph stays lit while a query is filtering, which a collapsed side-bar button otherwise hides.
@@ -4675,23 +4700,39 @@ function Library:CreateWindow(config)
         end
         layoutDockSearch = function(animate)
             local vertical = dockEdge == "Left" or dockEdge == "Right"
-            if vertical then
+            divider.Visible = dockEdge ~= "Top"
+            rim.Enabled = dockEdge ~= "Top"
+            dockSearch:FindFirstChildOfClass("UICorner").CornerRadius = UDim.new(0, dockEdge == "Top" and 12 or 999)
+            if vertical or dockEdge == "Top" then
                 local right = dockEdge == "Right"
-                dockSearch.AnchorPoint = Vector2.new(0.5, 0)
-                dockSearch.Position = UDim2.new(0.5, 0, 0, 10)
-                dockSearch.Size = UDim2.fromOffset(44, 44)
-                glyph.Position = UDim2.fromOffset(14, 14)
-                divider.AnchorPoint = Vector2.new(0.5, 0)
-                divider.Position = UDim2.new(0.5, 0, 1, 10)
-                divider.Size = UDim2.fromOffset(32, 1)
-                -- The card sits 10px past the bar's outer edge, level with the button.
+                local rest, away
+                if dockEdge == "Top" then
+                    -- Strip: a bare search glyph at the end of the bar; the card drops just below the bar.
+                    dockSearch.AnchorPoint = Vector2.new(1, 0.5)
+                    dockSearch.Position = UDim2.new(1, -7, 0.5, 0)
+                    dockSearch.Size = UDim2.fromOffset(34, 34)
+                    dockSearch.BackgroundTransparency = (hovering or box:IsFocused()) and 0.4 or 1
+                    glyph.Position = UDim2.fromOffset(9, 9)
+                    card.AnchorPoint = Vector2.new(1, 0)
+                    rest, away = UDim2.new(1, 7, 1, 14), UDim2.new(1, 7, 1, 6)
+                else
+                    dockSearch.AnchorPoint = Vector2.new(0.5, 0)
+                    dockSearch.Position = UDim2.new(0.5, 0, 0, 10)
+                    dockSearch.Size = UDim2.fromOffset(44, 44)
+                    dockSearch.BackgroundTransparency = 0.2
+                    glyph.Position = UDim2.fromOffset(14, 14)
+                    divider.AnchorPoint = Vector2.new(0.5, 0)
+                    divider.Position = UDim2.new(0.5, 0, 1, 10)
+                    divider.Size = UDim2.fromOffset(32, 1)
+                    -- The card sits 10px past the bar's outer edge, level with the button.
+                    card.AnchorPoint = Vector2.new(right and 1 or 0, 0.5)
+                    rest = UDim2.new(right and 0 or 1, right and -20 or 20, 0.5, 0)
+                    away = UDim2.new(right and 0 or 1, right and -12 or 12, 0.5, 0)
+                end
                 box.Parent = card
                 box.Position = UDim2.fromOffset(0, 0)
                 box.Size = UDim2.fromScale(1, 1)
                 boxPadding.PaddingLeft, boxPadding.PaddingRight = UDim.new(0, 42), UDim.new(0, 14)
-                card.AnchorPoint = Vector2.new(right and 1 or 0, 0.5)
-                local rest = UDim2.new(right and 0 or 1, right and -20 or 20, 0.5, 0)
-                local away = UDim2.new(right and 0 or 1, right and -12 or 12, 0.5, 0)
                 cardRevision = cardRevision + 1
                 local revision = cardRevision
                 if expanded then
@@ -4710,6 +4751,7 @@ function Library:CreateWindow(config)
                 dockSearch.AnchorPoint = Vector2.new(0, 0.5)
                 dockSearch.Position = UDim2.new(0, 12, 0.5, 0)
                 dockSearch.Size = UDim2.fromOffset(148, 36)
+                dockSearch.BackgroundTransparency = 0.2
                 glyph.Position = UDim2.fromOffset(12, 10)
                 divider.AnchorPoint = Vector2.new(0, 0.5)
                 divider.Position = UDim2.new(1, 10, 0.5, 0)
@@ -4854,17 +4896,17 @@ function Library:CreateWindow(config)
         return high.Y - area.Y
     end
     -- Resting distance of the dock from its GUI-area edge. A top bar moves up into Roblox's own top-bar
-    -- row (centred on it, level with its buttons) instead of hanging below it.
+    -- row (centred on it) when that strip is tall enough, instead of hanging below it.
     local function dockRestInward()
-        if dockEdge == "Top" then
-            local row = game:GetService("GuiService"):GetGuiInset().Y
-            if row >= 40 then return math.max(4, (row - 64 * dockFitScale) / 2) - dockScreenGap() end
+        local gap = dockScreenGap()
+        if dockEdge == "Top" and gap >= 40 then
+            return math.max(4, (gap - 48 * dockFitScale) / 2) - gap
         end
         return 14
     end
     local function renderDock()
         local progress = math.clamp(dockProgress, 0, 1)
-        local hiddenDepth = 12 + 64 * dockFitScale + dockScreenGap()
+        local hiddenDepth = 12 + (dockEdge == "Top" and 48 or 64) * dockFitScale + dockScreenGap()
         placeAtEdge(dockHost, (dockRestInward() + hiddenDepth) * dockProgress - hiddenDepth)
         -- Spring overshoot can leave a sliver on screen; fully parked means invisible.
         dockHost.Visible = dockProgress > 0.002 or dockExpanded
@@ -4887,25 +4929,54 @@ function Library:CreateWindow(config)
         renderDock()
     end
     refreshDockLayout = function()
+        -- A top bar is a slim strip: labelled tabs (icon + name), the active one in a soft pill, and a
+        -- search button at the end. The other edges keep the icon dock with the profile.
+        local strip = dockEdge == "Top"
+        local tabSpan = 0
         for _, tab in ipairs(tabs) do
-            tab.Button.Size = UDim2.fromOffset(44, 44)
-            tab.Icon.Position = UDim2.fromOffset(11, 11)
-            tab.Icon.Size = UDim2.fromOffset(22, 22)
-            tab.Title.Visible = false
+            tab.Title.Visible = strip
+            if strip then
+                tab.Title.TextSize = 13
+                local textWidth = tab.Title.TextBounds.X
+                if textWidth <= 0 then
+                    textWidth = game:GetService("TextService")
+                        :GetTextSize(tab.Name, 13, Enum.Font.BuilderSansMedium, Vector2.new(1000, 20)).X
+                end
+                tab.Button.Size = UDim2.fromOffset(math.ceil(textWidth) + 50, 34)
+                tab.Icon.Position = UDim2.fromOffset(14, 9)
+                tab.Icon.Size = UDim2.fromOffset(16, 16)
+                tab.Title.Position = UDim2.fromOffset(38, 0)
+                tab.Title.Size = UDim2.new(1, -40, 1, 0)
+            else
+                tab.Button.Size = UDim2.fromOffset(44, 44)
+                tab.Icon.Position = UDim2.fromOffset(11, 11)
+                tab.Icon.Size = UDim2.fromOffset(22, 22)
+            end
+            tab.Button:FindFirstChildOfClass("UICorner").CornerRadius = UDim.new(0, strip and 12 or 10)
+            tabSpan = tabSpan + tab.Button.Size.X.Offset + (strip and 4 or 8)
         end
         -- The bar is laid out along its edge: search, tabs, then a divider and the profile at the far end.
         local vertical = dockVertical()
-        local searchSpan = searchStyle ~= "Bar" and 0 or vertical and 58 or 164
+        local thickness = strip and 48 or 64
+        local searchSpan = searchStyle ~= "Bar" and 0 or (vertical or strip) and (strip and 40 or 58) or 164
         local available = vertical and viewport.AbsoluteSize.Y or viewport.AbsoluteSize.X
-        local length = math.min(76 + searchSpan + #tabs * 52, math.max(128 + searchSpan, available - 24))
-        dockHost.Size = vertical and UDim2.fromOffset(64, length) or UDim2.fromOffset(length, 64)
+        local length = strip and (16 + tabSpan + searchSpan)
+            or math.min(76 + searchSpan + #tabs * 52, math.max(128 + searchSpan, available - 24))
+        if strip then length = math.min(length, math.max(96 + searchSpan, available - 24)) end
+        dockHost.Size = vertical and UDim2.fromOffset(thickness, length) or UDim2.fromOffset(length, thickness)
+        dockGlass:FindFirstChildOfClass("UICorner").CornerRadius = UDim.new(0, strip and 16 or 22)
+        profile.Visible = not strip
+        dockDivider.Visible = not strip
         dockFitScale = math.min(root:GetAttribute("DPIScale") or 1, math.max(0.1, (available - 24) / length))
         dockReveal.Size = vertical and UDim2.fromOffset(20, 104) or UDim2.fromOffset(104, 20)
         renderDock()
         sidebar.Size = UDim2.fromScale(1, 1)
         dockSearch.Visible = searchStyle == "Bar"
         layoutDockSearch()
-        if vertical then
+        if strip then
+            navigationGroup.Position = UDim2.fromOffset(8, 7)
+            navigationGroup.Size = UDim2.new(1, -16 - searchSpan, 0, 34)
+        elseif vertical then
             navigationGroup.Position = UDim2.fromOffset(6, 8 + searchSpan)
             navigationGroup.Size = UDim2.new(0, 52, 1, -72 - searchSpan)
             profile.AnchorPoint = Vector2.new(0.5, 1)
@@ -4920,10 +4991,11 @@ function Library:CreateWindow(config)
             dockDivider.Size = UDim2.fromOffset(1, 32)
             dockDivider.Position = UDim2.new(1, -62, 0, 16)
         end
-        navigationPadding.PaddingTop = UDim.new(0, 4)
-        navigationPadding.PaddingBottom = UDim.new(0, 4)
-        navigationPadding.PaddingLeft = UDim.new(0, 4)
-        navigationPadding.PaddingRight = UDim.new(0, 4)
+        local inset = UDim.new(0, strip and 0 or 4)
+        navigationPadding.PaddingTop, navigationPadding.PaddingBottom = inset, inset
+        navigationPadding.PaddingLeft, navigationPadding.PaddingRight = inset, inset
+        navigationLayout.Padding = UDim.new(0, strip and 4 or 8)
+        if activeTab then selectTab(activeTab, true) end
     end
     local function setLayoutStyle(value)
         assert(layoutEdges[value], "Layout must be Bottom bar, Top bar, Left bar or Right bar")
@@ -4969,7 +5041,7 @@ function Library:CreateWindow(config)
         local minimumScale, hostPadding = 0.14, 12
         -- The centre of the dock, where the window shrinks into when hidden.
         local function landingPoint()
-            local inward = dockRestInward() + 32 * dockFitScale
+            local inward = dockRestInward() + (dockEdge == "Top" and 24 or 32) * dockFitScale
             local size = viewport.AbsoluteSize
             if dockEdge == "Top" then return Vector2.new(size.X / 2, inward) end
             if dockEdge == "Left" then return Vector2.new(inward, size.Y / 2) end
@@ -5079,7 +5151,7 @@ function Library:CreateWindow(config)
         -- The pointer can be past the GUI area (e.g. over Roblox's top bar) and still be at the screen edge.
         local near = math.abs(along) <= half
             and depth >= -(2 + dockScreenGap())
-            and depth <= (dockExpanded and 32 + 64 * dockFitScale or 18)
+            and depth <= (dockExpanded and 32 + (dockEdge == "Top" and 48 or 64) * dockFitScale or 18)
         if near then dockHoverUntil = now + 0.65 end
         local expanded = near or now < dockHoverUntil
         if expanded ~= dockExpanded then showDock(expanded) end
