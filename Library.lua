@@ -530,26 +530,34 @@ function Library:CreateWindow(config)
         local left = math.clamp(inset.X, 0, total.X)
         return Vector2.new(-left, -top), area + Vector2.new(total.X - left, total.Y - top)
     end
+    -- Clamps the window's anchor point. The window may hang past the left, right and bottom edges, but a
+    -- strip of it (and the whole header, from the top edge) always stays on screen to grab.
+    local function clampWindow(position)
+        local low, high = screenBounds()
+        local size = Vector2.new(root.Size.X.Offset, root.Size.Y.Offset) * scale.Scale
+        local anchor = root.AnchorPoint
+        local keep = Vector2.new(math.min(size.X, 120), math.min(size.Y, 54 * scale.Scale))
+        local minimum = Vector2.new(low.X + keep.X - size.X * (1 - anchor.X), low.Y + size.Y * anchor.Y)
+        local maximum = Vector2.new(
+            math.max(minimum.X, high.X - keep.X + size.X * anchor.X),
+            math.max(minimum.Y, high.Y - keep.Y + size.Y * anchor.Y)
+        )
+        return Vector2.new(math.clamp(position.X, minimum.X, maximum.X), math.clamp(position.Y, minimum.Y, maximum.Y))
+    end
     local function resize()
         local size = viewport.AbsoluteSize
         scale.Scale =
             math.max(0.01, math.min(1, (size.X - 32) / root.Size.X.Offset, (size.Y - 32) / root.Size.Y.Offset))
         if windowTransitioning then return end
         local position = root.Position
-        local halfWidth, halfHeight = root.Size.X.Offset * scale.Scale / 2, root.Size.Y.Offset * scale.Scale / 2
-        local low, high = screenBounds()
-        local x = math.clamp(
+        local anchor = clampWindow(Vector2.new(
             size.X * position.X.Scale + position.X.Offset,
-            low.X + halfWidth,
-            math.max(low.X + halfWidth, high.X - halfWidth)
+            size.Y * position.Y.Scale + position.Y.Offset
+        ))
+        root.Position = UDim2.new(
+            position.X.Scale, anchor.X - size.X * position.X.Scale,
+            position.Y.Scale, anchor.Y - size.Y * position.Y.Scale
         )
-        local y = math.clamp(
-            size.Y * position.Y.Scale + position.Y.Offset,
-            low.Y + halfHeight,
-            math.max(low.Y + halfHeight, high.Y - halfHeight)
-        )
-        root.Position =
-            UDim2.new(position.X.Scale, x - size.X * position.X.Scale, position.Y.Scale, y - size.Y * position.Y.Scale)
     end
     local resizeConnection = viewport:GetPropertyChangedSignal("AbsoluteSize"):Connect(resize)
     screen.Destroying:Connect(function() resizeConnection:Disconnect() end)
@@ -4908,16 +4916,6 @@ function Library:CreateWindow(config)
             root.Position.X.Scale * size.X + root.Position.X.Offset,
             root.Position.Y.Scale * size.Y + root.Position.Y.Offset
         )
-    end
-    local function clampWindow(position)
-        local screenLow, screenHigh = screenBounds()
-        local size = Vector2.new(root.Size.X.Offset, root.Size.Y.Offset) * scale.Scale
-        local low = screenLow + Vector2.new(size.X * root.AnchorPoint.X, size.Y * root.AnchorPoint.Y)
-        local high = Vector2.new(
-            math.max(low.X, screenHigh.X - size.X * (1 - root.AnchorPoint.X)),
-            math.max(low.Y, screenHigh.Y - size.Y * (1 - root.AnchorPoint.Y))
-        )
-        return Vector2.new(math.clamp(position.X, low.X, high.X), math.clamp(position.Y, low.Y, high.Y))
     end
     local resizeHandle
     -- Scoped block: CreateWindow sits close to Luau's 200-local limit, so helpers used only by
