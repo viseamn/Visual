@@ -3040,8 +3040,7 @@ function Library:CreateWindow(config)
             list.CanvasSize = UDim2.fromOffset(0, 0)
             list.AutomaticCanvasSize = Enum.AutomaticSize.Y
             list.ScrollingDirection = Enum.ScrollingDirection.Y
-            list.ScrollBarThickness = 3
-            bindTheme(list, "ScrollBarImageColor3", "Muted")
+            list.ScrollBarThickness = 0
             list.Active = true
             list.Parent = menu
             local layout = Instance.new("UIListLayout")
@@ -3284,7 +3283,7 @@ function Library:CreateWindow(config)
                     or ""
                 entry.Image.Visible = asset ~= nil
                 local imageEnabled = asset ~= nil
-                    or (options.SpecialType == "Player" and options.EnablePlayerImages == true)
+                    or (options.SpecialType == "Player" and options.EnablePlayerImages ~= false)
                 entry.Label.Position = UDim2.fromOffset(imageEnabled and 35 or 9, 0)
                 entry.Label.Size = UDim2.new(1, imageEnabled and -65 or -39, 1, 0)
                 if not asset and imageEnabled then
@@ -3340,6 +3339,14 @@ function Library:CreateWindow(config)
                     optionImage.Position = UDim2.fromOffset(8, 6)
                     optionImage.Size = UDim2.fromOffset(20, 20)
                     optionImage.Parent = option
+                    -- Player avatars are round, on a faint disc while the headshot loads.
+                    if options.SpecialType == "Player" then
+                        optionImage.BackgroundTransparency = 0
+                        bindTheme(optionImage, "BackgroundColor3", "Navigation")
+                        local avatarCorner = Instance.new("UICorner")
+                        avatarCorner.CornerRadius = UDim.new(0.5, 0)
+                        avatarCorner.Parent = optionImage
+                    end
                     local optionLabel = label(option, listLabel(key), 12)
                     optionLabel.TextTruncate = Enum.TextTruncate.AtEnd
                     local check = icon(option, "check", 0, 8, 16, "Accent")
