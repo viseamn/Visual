@@ -691,6 +691,7 @@ function Library:CreateWindow(config)
     navigationGroup.AutomaticCanvasSize = Enum.AutomaticSize.Y
     navigationGroup.ScrollingDirection = Enum.ScrollingDirection.Y
     navigationGroup.ScrollBarThickness = 0
+    navigationGroup.ScrollBarImageTransparency = 1
     navigationGroup.Active = true
     navigationGroup.Parent = sidebar
 
@@ -3260,6 +3261,8 @@ function Library:CreateWindow(config)
                     paint(entry, false)
                     if selected(entry.Value) then selectedIndex = index end
                 end
+                -- When every option fits, a scaled-up menu can still overflow by a rounded pixel; keep it still.
+                list.ScrollingEnabled = #values > count
                 list.CanvasPosition =
                     Vector2.new(0, math.max(0, math.min((selectedIndex - 1) * 35, (#values - count) * 35)))
                 tweenIcon(arrow, "Icon", 180)
@@ -4395,6 +4398,7 @@ function Library:CreateWindow(config)
     keybindList.BackgroundTransparency = 1
     keybindList.BorderSizePixel = 0
     keybindList.ScrollBarThickness = 0
+    keybindList.ScrollBarImageTransparency = 1
     keybindList.CanvasSize = UDim2.fromOffset(0, 0)
     keybindList.AutomaticCanvasSize = Enum.AutomaticSize.Y
     keybindList.Parent = keybindMenu.Frame
