@@ -1193,6 +1193,7 @@ function Library:CreateWindow(config)
             capturingKeybind = nil
             control:SetModifiers(input.KeyCode == Enum.KeyCode.Backspace and {} or modifiers)
             control:SetKeybind(input.KeyCode == Enum.KeyCode.Backspace and Enum.KeyCode.Unknown or input.KeyCode)
+            if control.OnKeyCaptured then control:OnKeyCaptured() end
             return
         end
         if processed or dialogOpen or input.UserInputType ~= Enum.UserInputType.Keyboard then return end
@@ -2443,6 +2444,12 @@ function Library:CreateWindow(config)
             bindTheme(bindBorder, "Color", "Border")
             bindBorder.Transparency = 1
             bindBorder.Parent = bindMenu
+            -- A full-size button behind the controls swallows presses on the popup's padding, which would
+            -- otherwise fall through to the rows underneath.
+            local bindBlocker = rounded("TextButton", "InputBlocker", bindMenu, 0, 0, 0, 0, "Card", 9)
+            bindBlocker.Size = UDim2.fromScale(1, 1)
+            bindBlocker.BackgroundTransparency = 1
+            bindBlocker.ZIndex = 0
             local modeStrip = rounded("Frame", "Mode", bindMenu, 6, 6, 164, 28, "Search", 6)
             local modeHighlight = rounded("Frame", "Highlight", modeStrip, 2, 2, 80, 24, "Navigation", 5)
             local modeButtons = {}
@@ -2554,6 +2561,10 @@ function Library:CreateWindow(config)
                     motion(bindBorder, { Transparency = 1 }, 0.1)
                     task.delay(animationDuration(0.14), finish)
                 end
+            end
+            -- The popup closes once a key (or Backspace to clear) has been taken.
+            function control:OnKeyCaptured()
+                if openDropdown == bindPopup then closeDropdown() end
             end
             function control:RefreshKeybind()
                 local listening = capturingKeybind == self
