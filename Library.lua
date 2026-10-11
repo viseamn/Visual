@@ -100,6 +100,7 @@ Library._Storage = {
 -- Layout style -> the screen edge the tab bar docks to.
 local layoutEdges = { ["Bottom bar"] = "Bottom", ["Top bar"] = "Top", ["Left bar"] = "Left", ["Right bar"] = "Right" }
 local layoutStyles = { "Bottom bar", "Top bar", "Left bar", "Right bar" }
+local dpiScales = { "50%", "75%", "100%", "125%", "150%", "175%", "200%" }
 
 -- Obsidian-compatible feature adapters. See THIRD_PARTY_NOTICES.md.
 local function featureSignal()
@@ -618,8 +619,12 @@ function Library:CreateWindow(config)
     end
     local function resize()
         local size = viewport.AbsoluteSize
-        scale.Scale =
-            math.max(0.01, math.min(1, (size.X - 32) / root.Size.X.Offset, (size.Y - 32) / root.Size.Y.Offset))
+        -- DPI scale (root attribute, see window:SetDPIScale), shrunk further if the window would not fit.
+        scale.Scale = math.max(0.01, math.min(
+            root:GetAttribute("DPIScale") or 1,
+            (size.X - 32) / root.Size.X.Offset,
+            (size.Y - 32) / root.Size.Y.Offset
+        ))
         if windowTransitioning then return end
         local position = root.Position
         local anchor = clampWindow(Vector2.new(
@@ -4721,7 +4726,7 @@ function Library:CreateWindow(config)
     end
     local function renderDock()
         local progress = math.clamp(dockProgress, 0, 1)
-        local hiddenDepth = 76 + dockScreenGap()
+        local hiddenDepth = 12 + 64 * dockFitScale + dockScreenGap()
         placeAtEdge(dockHost, (dockRestInward() + hiddenDepth) * dockProgress - hiddenDepth)
         -- Spring overshoot can leave a sliver on screen; fully parked means invisible.
         dockHost.Visible = dockProgress > 0.002 or dockExpanded
@@ -4756,7 +4761,7 @@ function Library:CreateWindow(config)
         local available = vertical and viewport.AbsoluteSize.Y or viewport.AbsoluteSize.X
         local length = math.min(76 + searchSpan + #tabs * 52, math.max(128 + searchSpan, available - 24))
         dockHost.Size = vertical and UDim2.fromOffset(64, length) or UDim2.fromOffset(length, 64)
-        dockFitScale = math.min(1, math.max(0.1, (available - 24) / length))
+        dockFitScale = math.min(root:GetAttribute("DPIScale") or 1, math.max(0.1, (available - 24) / length))
         dockReveal.Size = vertical and UDim2.fromOffset(20, 104) or UDim2.fromOffset(104, 20)
         renderDock()
         sidebar.Size = UDim2.fromScale(1, 1)
@@ -4936,7 +4941,7 @@ function Library:CreateWindow(config)
         -- The pointer can be past the GUI area (e.g. over Roblox's top bar) and still be at the screen edge.
         local near = math.abs(along) <= half
             and depth >= -(2 + dockScreenGap())
-            and depth <= (dockExpanded and 96 or 18)
+            and depth <= (dockExpanded and 32 + 64 * dockFitScale or 18)
         if near then dockHoverUntil = now + 0.65 end
         local expanded = near or now < dockHoverUntil
         if expanded ~= dockExpanded then showDock(expanded) end
@@ -5379,6 +5384,22 @@ function Library:CreateWindow(config)
         closeDropdown(true)
         setWindowSize(size)
     end
+    -- Scales the window and the bar: 1.25, 125 or "125%" (clamped to 50%-200%).
+    function window:SetDPIScale(value)
+        if type(value) == "string" then value = tonumber((value:gsub("%%", ""))) end
+        assert(type(value) == "number" and value == value, 'DPI scale expects a number or "125%"')
+        if value > 3 then value = value / 100 end
+        value = math.clamp(value, 0.5, 2)
+        cancelWindowResize()
+        closeDropdown(true)
+        root:SetAttribute("DPIScale", value)
+        resize()
+        refreshDockLayout()
+        local percent = math.floor(value * 100 + 0.5) .. "%"
+        local control = self.DPIScaleControl
+        if control and control.Value ~= percent and table.find(dpiScales, percent) then control:Set(percent, true) end
+    end
+    function window:GetDPIScale() return root:GetAttribute("DPIScale") or 1 end
     function window:SetVisible(value) setUIVisible(value) end
     function window:IsVisible() return uiShown end
     function window:Toggle() setUIVisible(not uiShown) end
@@ -5427,6 +5448,17 @@ function Library:CreateWindow(config)
                 if value then setNotificationPosition(value) end
             end,
         })
+        self.DPIScaleControl = group:AddDropdown({
+            Name = "DPI Scale",
+            Options = table.clone(dpiScales),
+            Default = math.floor(self:GetDPIScale() * 100 + 0.5) .. "%",
+            Searchable = false,
+            NoSave = true,
+            -- Deferred: rescaling closes open dropdowns, including this one mid-callback.
+            Callback = function(value)
+                if value then task.defer(function() self:SetDPIScale(value) end) end
+            end,
+        })
         return settingsTab
     end
     function window:AddStyleControls(section)
@@ -5462,6 +5494,7 @@ function Library:CreateWindow(config)
         table.clear(Options)
         table.clear(Toggles)
     end
+    if config.DPIScale then window:SetDPIScale(config.DPIScale) end
     self.Window = window
     self.Options, self.Toggles = Options, Toggles
     return window
