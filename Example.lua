@@ -1,120 +1,132 @@
-local function run()
-    local repo = "https://raw.githubusercontent.com/viseamn/Visual/main/"
-    local Library = loadstring(game:HttpGet(repo .. "Library.lua"))()
-    local SaveManager = loadstring(game:HttpGet(repo .. "SaveManager.lua"))()
-    local ThemeManager = loadstring(game:HttpGet(repo .. "ThemeManager.lua"))()
+-- Viz example. Every element type is shown once; copy what you need.
+local repo = "https://raw.githubusercontent.com/viseamn/Visual/main/"
+local Library = loadstring(game:HttpGet(repo .. "Library.lua"))()
+local ThemeManager = loadstring(game:HttpGet(repo .. "ThemeManager.lua"))()
+local SaveManager = loadstring(game:HttpGet(repo .. "SaveManager.lua"))()
 
-    local Window = Library:CreateWindow({
-        Title = "Viz",
-        Size = Vector2.new(640, 460),
-        Layout = "Bottom bar",
-        MenuKey = Enum.KeyCode.RightShift,
-    })
+local Window = Library:CreateWindow({
+    Title = "Viz",
+    Size = Vector2.new(640, 460),
+    Layout = "Bottom bar", -- "Bottom bar", "Top bar", "Left bar" or "Right bar"
+    MenuKey = Enum.KeyCode.RightShift,
+})
 
-    local Main = Window:AddTab("Main", "house")
-    local Controls = Main:AddLeftGroupbox("Controls", "sliders-horizontal")
-    local Options = Main:AddRightGroupbox("Options", "layout-grid")
+-- Every control created with an ID ends up here, e.g. Toggles.MyToggle.Value
+local Options = Library.Options
+local Toggles = Library.Toggles
 
-    Controls:AddToggle("Enabled", {
-        Text = "Enabled",
-        Default = true,
-        Keybind = "F",
-        Tooltip = "Enable advanced controls",
-        Callback = function(value) print("Enabled:", value) end,
-    })
-    local Advanced = Controls:AddDependencyBox()
-    Advanced:AddSlider("Amount", {
-        Text = "Amount",
-        Min = 0,
-        Max = 100,
-        Default = 50,
-        Increment = 1,
-    })
-    Advanced:SetupDependencies({ { Library.Toggles.Enabled, true } })
-    Controls:AddRangeSlider("Range", {
-        Text = "Range",
-        Min = 0,
-        Max = 100,
-        Default = { 20, 80 },
-    })
-    Controls:AddColorPicker("Color", {
-        Text = "Color",
-        Default = Color3.fromRGB(199, 83, 224),
-        Alpha = false,
-    })
+-- Icons are Lucide names: https://lucide.dev/icons
+local Tabs = {
+    Main = Window:AddTab("Main", "house"),
+    Settings = Window:CreateSettingsTab(),
+}
 
-    Options:AddDropdown("Mode", {
-        Text = "Mode",
-        Values = { "Default", "Compact", "Detailed" },
-        Default = "Default",
-    })
-    Options:AddDropdown("Items", {
-        Text = "Items",
-        Values = { "Names", "Health", "Distance" },
-        Multi = true,
-        Default = { "Names", "Health" },
-    })
-    Options:AddInput("Name", { Text = "Name", Placeholder = "Enter a name" })
-    local CountInput = Options:AddInput("Count", {
-        Text = "Count", Default = "10", Numeric = true, MaxLength = 3,
-        AllowEmpty = false, Finished = true,
-        VerifyValue = function(value) return tonumber(value) <= 100 end,
-        Tooltip = "Enter a number up to 100, then press Enter",
-    })
-    Options:GetControl(CountInput):OnChanged(function(value) print("Count:", value) end)
-    Options:AddButton({
-        Text = "Test notification",
-        Callback = function() Window:Notify({ Title = "Viz", Content = "Ready", Icon = "check" }) end,
-    })
+--// Main: left column \\--
+local LeftGroupbox = Tabs.Main:AddLeftGroupbox("Groupbox", "boxes")
 
-    local Settings = Window:CreateSettingsTab()
-    SaveManager:SetLibrary(Library)
-    ThemeManager:SetLibrary(Library)
-    SaveManager:SetFolder("Viz")
-    ThemeManager:SetFolder("Viz")
-    SaveManager:BuildConfigSection(Settings)
-    ThemeManager:ApplyToTab(Settings)
+LeftGroupbox:AddToggle("MyToggle", {
+    Text = "This is a toggle",
+    Default = true,
+    Keybind = "F", -- optional, press F to flip it
+    Tooltip = "Hover text",
+    Callback = function(value)
+        print("MyToggle:", value)
+    end,
+})
+Toggles.MyToggle:AddColorPicker({ Default = Color3.fromRGB(255, 255, 255) })
 
-    local ok, err = ThemeManager:LoadDefault()
-    if not ok then warn(err) end
-    ok, err = SaveManager:LoadAutoloadConfig()
-    if not ok then warn(err) end
+LeftGroupbox:AddCheckbox("MyCheckbox", {
+    Text = "This is a checkbox",
+    Default = false,
+})
 
-    -- Library.Options.Amount:SetValue(75)
-    -- Library.Toggles.Enabled:SetValue(false)
-    -- Window:SetVisible(false)
-    -- Library:Unload()
+LeftGroupbox:AddButton({
+    Text = "Button",
+    Callback = function()
+        Window:Notify({ Title = "Viz", Content = "Button pressed", Icon = "check" })
+    end,
+})
+LeftGroupbox:AddButton({ Text = "Disabled button", Disabled = true })
 
-    return { Library = Library, Window = Window, SaveManager = SaveManager, ThemeManager = ThemeManager }
+LeftGroupbox:AddDivider()
+LeftGroupbox:AddLabel("This is a label")
 
-end
+LeftGroupbox:AddSlider("MySlider", {
+    Text = "Slider",
+    Min = 0,
+    Max = 100,
+    Default = 50,
+    Increment = 1,
+})
+LeftGroupbox:AddRangeSlider("MyRange", {
+    Text = "Range slider",
+    Min = 0,
+    Max = 100,
+    Default = { 20, 80 },
+})
 
-local ok, result = xpcall(run, debug.traceback)
-if not ok then
-    warn("Viz startup failed:\n" .. tostring(result))
-    -- A plain GUI reports startup errors even when grouped textures cannot render.
-    pcall(function()
-        local player = game:GetService("Players").LocalPlayer
-        if not player then return end
-        local gui = Instance.new("ScreenGui")
-        gui.Name = "VizStartupError"
-        gui.ResetOnSpawn = false
-        gui.DisplayOrder = 10000
-        gui.Parent = player:WaitForChild("PlayerGui")
-        local message = Instance.new("TextButton")
-        message.Name = "Error"
-        message.AnchorPoint = Vector2.new(0.5, 0.5)
-        message.Position = UDim2.fromScale(0.5, 0.5)
-        message.Size = UDim2.new(0.9, 0, 0.6, 0)
-        message.BackgroundColor3 = Color3.fromRGB(25, 25, 30)
-        message.TextColor3 = Color3.fromRGB(255, 190, 190)
-        message.Font = Enum.Font.SourceSans
-        message.TextSize = 14
-        message.TextWrapped = true
-        message.Text = "Viz could not start\n\n" .. tostring(result) .. "\n\nTap to close"
-        message.Parent = gui
-        message.Activated:Connect(function() gui:Destroy() end)
-    end)
-    error(result, 0)
-end
-return result
+LeftGroupbox:AddInput("MyInput", {
+    Text = "Textbox",
+    Placeholder = "Type here",
+    Finished = true, -- only fire Callback when Enter is pressed
+})
+
+LeftGroupbox:AddKeybind("MyKeybind", {
+    Text = "Keybind",
+    Default = Enum.KeyCode.G,
+})
+
+LeftGroupbox:AddColorPicker("MyColor", {
+    Text = "Color picker",
+    Default = Color3.fromRGB(255, 255, 255),
+})
+
+-- Only shown while MyToggle is on.
+local Dependent = LeftGroupbox:AddDependencyBox()
+Dependent:AddSlider("Strength", { Text = "Strength", Min = 1, Max = 10, Default = 5 })
+Dependent:SetupDependencies({ { Toggles.MyToggle, true } })
+
+--// Main: right column \\--
+local RightGroupbox = Tabs.Main:AddRightGroupbox("Dropdowns", "list")
+
+RightGroupbox:AddDropdown("MyDropdown", {
+    Text = "A dropdown",
+    Values = { "This", "is", "a", "dropdown" },
+    Default = "This",
+})
+RightGroupbox:AddDropdown("MyMultiDropdown", {
+    Text = "A multi dropdown",
+    Values = { "Names", "Health", "Distance" },
+    Default = { "Names", "Health" },
+    Multi = true,
+})
+RightGroupbox:AddDropdown("MyPlayer", {
+    Text = "A player dropdown",
+    SpecialType = "Player",
+})
+
+--// Reading and changing values \\--
+Toggles.MyToggle:OnChanged(function(value)
+    print("MyToggle changed to", value)
+end)
+Options.MySlider:OnChanged(function(value)
+    print("MySlider changed to", value)
+end)
+
+-- Options.MySlider:SetValue(75)
+-- Toggles.MyToggle:SetValue(false)
+-- print(Options.MyDropdown.Value)
+
+--// Settings tab: themes and configs \\--
+ThemeManager:SetLibrary(Library)
+SaveManager:SetLibrary(Library)
+ThemeManager:SetFolder("Viz")
+SaveManager:SetFolder("Viz")
+
+SaveManager:BuildConfigSection(Tabs.Settings)
+ThemeManager:ApplyToTab(Tabs.Settings)
+
+ThemeManager:LoadDefault()
+SaveManager:LoadAutoloadConfig()
+
+-- Library:Unload() removes the UI.

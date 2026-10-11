@@ -298,16 +298,16 @@ function Library:CreateWindow(config)
         Background = Color3.fromRGB(12, 13, 16),
         Header = Color3.fromRGB(12, 13, 16),
         Search = Color3.fromRGB(22, 23, 28),
-        Accent = Color3.fromRGB(199, 83, 224),
+        Accent = Color3.fromRGB(255, 255, 255),
         Muted = Color3.fromRGB(105, 107, 119),
-        Icon = Color3.fromRGB(199, 83, 224),
+        Icon = Color3.fromRGB(255, 255, 255),
         Navigation = Color3.fromRGB(35, 36, 43),
         Card = Color3.fromRGB(17, 18, 22),
         Border = Color3.fromRGB(33, 34, 41),
         Text = Color3.fromRGB(218, 219, 229),
-        Selected = Color3.fromRGB(49, 31, 57),
-        Hover = Color3.fromRGB(57, 47, 65),
-        Pressed = Color3.fromRGB(82, 48, 94),
+        Selected = Color3.fromRGB(56, 57, 59),
+        Hover = Color3.fromRGB(55, 56, 59),
+        Pressed = Color3.fromRGB(88, 89, 92),
     }
     local function luminance(color)
         local function linear(c) return c <= 0.04045 and c / 12.92 or ((c + 0.055) / 1.055) ^ 2.4 end
