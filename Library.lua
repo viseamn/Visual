@@ -1,27 +1,4 @@
 -- Viz 1.0.3
---[[
-Obsidian feature reference/adaptation notice:
-MIT License
-Copyright (c) 2025 deividcomsono
-
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
-
-The above copyright notice and this permission notice shall be included in all
-copies or substantial portions of the Software.
-
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-SOFTWARE.
-]]
 local Library = { Version = "1.0.3" }
 local function safeName(name)
     return type(name) == "string" and #name > 0 and #name <= 64 and name:match("^[%w _%-]+$") and name:match("%S")
@@ -4754,15 +4731,14 @@ function Library:CreateWindow(config)
         -- Side-bar search card: styled like the bar itself and kept clear of it, rather than stretching the
         -- button across the bar's edge.
         local card = rounded("CanvasGroup", "SearchCard", dockSearch, 0, 0, 236, 48, "Background", 16)
-        card.BackgroundTransparency = 0.04
         setGroupTransparency(card, 1)
         card.Visible = false
         card.Active = true
+        -- Same see-through glass as the window: sheen, reflected rim, theme-aware opacity.
         local cardRim = Instance.new("UIStroke")
-        cardRim.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
-        bindTheme(cardRim, "Color", "Accent")
+        cardRim.Color = Color3.fromRGB(232, 225, 255)
         cardRim.Transparency = 1
-        cardRim.Parent = card
+        glassSurface(card, 0.12, cardRim)
         icon(card, "search", 16, 16, 16, "Accent")
         local expanded, cardRevision = false, 0
         local box = rounded("TextBox", "Box", dockSearch, 36, 0, 0, 36, "Search", 0)
@@ -4840,7 +4816,7 @@ function Library:CreateWindow(config)
                     if not card.Visible then card.Position = away end
                     card.Visible = true
                     tween(card, { GroupTransparency = 0, Position = rest }, animate and 0.18 or 0)
-                    motion(cardRim, { Transparency = 0.55 }, animate and 0.18 or 0)
+                    motion(cardRim, { Transparency = 0.78 }, animate and 0.18 or 0)
                 elseif card.Visible then
                     tween(card, { GroupTransparency = 1, Position = away }, animate and 0.14 or 0)
                     motion(cardRim, { Transparency = 1 }, animate and 0.14 or 0)
