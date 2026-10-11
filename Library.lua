@@ -2454,14 +2454,18 @@ function Library:CreateWindow(config)
             bell.Position = UDim2.new(1, -120, 0, 2)
             bell.BackgroundTransparency = 1
             local bellIcon = icon(bell, "bell", 5, 5, 14)
-            local keyButton = rounded("TextButton", "Keybind", container, 0, 3, 48, 22, "Search", 6)
+            -- Same key chip as AddKeybind, so a toggle's key reads like every other keybind.
+            local keyButton = rounded("TextButton", "Keybind", container, 0, 3, 24, 22, "Search", 6)
             keyButton.Position = UDim2.new(1, -90, 0, 3)
             setUIFont(keyButton, true)
-            keyButton.TextSize = 10
-            bindTheme(keyButton, "TextColor3", "Muted")
+            keyButton.TextSize = 11
+            bindTheme(keyButton, "TextColor3", "Text")
             keyButton.TextTruncate = Enum.TextTruncate.AtEnd
-            local keyboardIcon = icon(keyButton, "keyboard", 5, 4, 14)
+            local keyboardIcon = icon(keyButton, "keyboard", 0, 0, 14)
+            keyboardIcon.AnchorPoint = Vector2.new(0.5, 0.5)
+            keyboardIcon.Position = UDim2.fromScale(0.5, 0.5)
             local keyBorder = Instance.new("UIStroke")
+            keyBorder.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
             bindTheme(keyBorder, "Color", "Border")
             keyBorder.Parent = keyButton
             animateButton(keyButton, "Search")
@@ -2601,17 +2605,21 @@ function Library:CreateWindow(config)
             function control:RefreshKeybind()
                 local listening = capturingKeybind == self
                 local iconOnly = not listening and self.Keybind == Enum.KeyCode.Unknown
-                local width = 24
-                keyButton.Size = UDim2.fromOffset(width, 22)
-                keyButton.Position = UDim2.new(1, -42 - width - self.ColorSpace, 0, 3)
-                keyButton.BackgroundTransparency = 1
-                keyBorder.Transparency = 1
-                keyboardIcon.Visible = iconOnly
-                bell.Position = UDim2.new(1, -72 - width - self.ColorSpace, 0, 2)
-                text.Size = UDim2.new(1, -80 - width - self.ColorSpace, 1, 0)
                 local keyName = self.Keybind == Enum.KeyCode.Unknown and "-" or self.Keybind.Name
                 keyButton.Text = iconOnly and "" or (listening and "..." or shortKeyNames[keyName] or keyName)
-                tween(keyButton, { TextColor3 = listening and "Accent" or "Muted" }, 0.15)
+                -- Right to left with an even 8px gap: switch (34), color swatch, key chip, bell.
+                local textWidth = game:GetService("TextService")
+                    :GetTextSize(keyButton.Text, 11, Enum.Font.BuilderSansMedium, Vector2.new(200, 22)).X
+                local width = math.clamp(math.ceil(textWidth) + 14, 24, 72)
+                local chipRight = 42 + self.ColorSpace
+                keyButton.Size = UDim2.fromOffset(width, 22)
+                keyButton.Position = UDim2.new(1, -chipRight - width, 0, 3)
+                keyButton.BackgroundTransparency = 0
+                keyBorder.Transparency = 0
+                keyboardIcon.Visible = iconOnly
+                bell.Position = UDim2.new(1, -chipRight - width - 4 - 24, 0, 2)
+                text.Size = UDim2.new(1, -chipRight - width - 4 - 24 - 8, 1, 0)
+                tween(keyButton, { TextColor3 = listening and "Accent" or "Text" }, 0.15)
                 tween(keyBorder, { Color = listening and "Accent" or "Border" }, 0.15)
                 refreshBindMenu()
                 refreshKeybindMenu()
@@ -2619,7 +2627,7 @@ function Library:CreateWindow(config)
             function control:AddColorPicker(colorOptions)
                 if self.ColorPicker then return self.ColorPicker end
                 local swatch = rounded("TextButton", "ColorSwatch", container, 0, 5, 18, 18, "Accent", 4)
-                swatch.Position = UDim2.new(1, -58, 0, 5)
+                swatch.Position = UDim2.new(1, -60, 0, 5)
                 local stroke = Instance.new("UIStroke")
                 bindTheme(stroke, "Color", "Muted")
                 stroke.Parent = swatch
@@ -2629,7 +2637,7 @@ function Library:CreateWindow(config)
                 colorOptions.NoSave = colorOptions.NoSave or options.NoSave
                 self.ColorPicker = createColorPicker(container, swatch, colorOptions)
                 persistColor(colorOptions, self.ColorPicker, container)
-                self.ColorSpace = 24
+                self.ColorSpace = 26 -- swatch (18) + 8px gap
                 self:RefreshKeybind()
                 tab.Columns[side]:GetPropertyChangedSignal("CanvasPosition"):Connect(function()
                     if openDropdown == self.ColorPicker then closeDropdown(true) end
@@ -5034,14 +5042,15 @@ function Library:CreateWindow(config)
                 tab.Icon.Size = UDim2.fromOffset(22, 22)
             end
             tab.Button:FindFirstChildOfClass("UICorner").CornerRadius = UDim.new(0, strip and 12 or 10)
-            tabSpan = tabSpan + tab.Button.Size.X.Offset + (strip and 4 or 8)
+            tabSpan = tabSpan + tab.Button.Size.X.Offset + (strip and 6 or 8)
         end
         -- The bar is laid out along its edge: search, tabs, then a divider and the profile at the far end.
         local vertical = dockVertical()
         local thickness = strip and 48 or 64
         local searchSpan = searchStyle ~= "Bar" and 0 or (vertical or strip) and (strip and 42 or 58) or 164
         local available = vertical and viewport.AbsoluteSize.Y or viewport.AbsoluteSize.X
-        local length = strip and (16 + tabSpan + searchSpan)
+        -- Strip: an even 6px everywhere (edges, between tabs, before the search button).
+        local length = strip and (6 + tabSpan + searchSpan)
             or math.min(76 + searchSpan + #tabs * 52, math.max(128 + searchSpan, available - 24))
         -- The strip lives in the window header: centred, or after the logo when the header search field is
         -- shown on the right. It never runs under the logo or the field; extra tabs scroll.
@@ -5071,8 +5080,8 @@ function Library:CreateWindow(config)
         dockSearch.Visible = searchStyle == "Bar"
         layoutDockSearch()
         if strip then
-            navigationGroup.Position = UDim2.fromOffset(8, 6)
-            navigationGroup.Size = UDim2.new(1, -16 - searchSpan, 0, 36)
+            navigationGroup.Position = UDim2.fromOffset(6, 6)
+            navigationGroup.Size = UDim2.new(1, -12 - searchSpan, 0, 36)
         elseif vertical then
             navigationGroup.Position = UDim2.fromOffset(6, 8 + searchSpan)
             navigationGroup.Size = UDim2.new(0, 52, 1, -72 - searchSpan)
@@ -5091,7 +5100,7 @@ function Library:CreateWindow(config)
         local inset = UDim.new(0, strip and 0 or 4)
         navigationPadding.PaddingTop, navigationPadding.PaddingBottom = inset, inset
         navigationPadding.PaddingLeft, navigationPadding.PaddingRight = inset, inset
-        navigationLayout.Padding = UDim.new(0, strip and 4 or 8)
+        navigationLayout.Padding = UDim.new(0, strip and 6 or 8)
         if activeTab then selectTab(activeTab, true) end
     end
     -- The header strip is limited by the window width, so refit it when the window is resized.
