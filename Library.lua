@@ -172,6 +172,78 @@ local function dependenciesMatch(dependencies)
     return true
 end
 
+-- Icons render from the Lucide icon font (lucide-roblox-direct GetFontAsset), which stays sharp at any
+-- size. Without getcustomasset, or if the download fails, they fall back to this built-in sprite atlas.
+Library.LucideSource = "https://raw.githubusercontent.com/notpoiu/lucide-roblox-direct/main/source.lua"
+local iconAtlas = {
+    ["house"] = { 325, 675 },
+    ["binoculars"] = { 400, 50 },
+    ["globe"] = { 50, 900 },
+    ["settings"] = { 525, 900 },
+    ["cpu"] = { 500, 275 },
+    ["shopping-bag"] = { 925, 550 },
+    ["search"] = { 850, 575 },
+    ["sliders-horizontal"] = { 800, 700 },
+    ["layout-grid"] = { 825, 225 },
+    ["info"] = { 850, 175 },
+    ["palette"] = { 825, 400 },
+    ["check"] = { 400, 225 },
+    ["chevron-down"] = { 175, 450 },
+    ["bell"] = { 125, 300 },
+    ["bell-off"] = { 200, 225 },
+    ["keyboard"] = { 500, 525 },
+    ["copy"] = { 775, 0 },
+    ["arrow-left-right"] = { 50, 225 },
+}
+local lucide -- nil = not loaded yet, false = unavailable
+local function lucideIcon(name)
+    if lucide == nil then
+        lucide = false
+        local ok, module = pcall(function()
+            return loadstring(game:HttpGet(Library.LucideSource))()
+        end)
+        if ok and type(module) == "table" and type(module.GetFontAsset) == "function" then lucide = module end
+    end
+    if not lucide then return nil end
+    local ok, asset = pcall(lucide.GetFontAsset, name)
+    return ok and type(asset) == "table" and asset.FontFace and asset or nil
+end
+-- Points an icon (an ImageLabel from `icon`) at a Lucide name. With the font, a TextLabel child draws the
+-- glyph and mirrors the ImageLabel's colour and transparency, so callers keep tweening ImageColor3 and
+-- ImageTransparency either way.
+local function setIcon(image, name)
+    local asset = lucideIcon(name)
+    local glyph = image:FindFirstChild("IconGlyph")
+    if not asset then
+        if glyph then glyph:Destroy() end
+        local coords = iconAtlas[name] or iconAtlas["layout-grid"]
+        image.Image = "rbxassetid://97854828246256"
+        image.ImageRectSize = Vector2.new(24, 24)
+        image.ImageRectOffset = Vector2.new(coords[1], coords[2])
+        return
+    end
+    image.Image = ""
+    if not glyph then
+        glyph = Instance.new("TextLabel")
+        glyph.Name = "IconGlyph"
+        glyph.BackgroundTransparency = 1
+        glyph.Size = UDim2.fromScale(1, 1)
+        glyph.Active = false
+        glyph.Parent = image
+        local function sync()
+            glyph.TextColor3 = image.ImageColor3
+            glyph.TextTransparency = image.ImageTransparency
+            glyph.TextSize = math.min(image.Size.X.Offset, image.Size.Y.Offset)
+        end
+        sync()
+        image:GetPropertyChangedSignal("ImageColor3"):Connect(sync)
+        image:GetPropertyChangedSignal("ImageTransparency"):Connect(sync)
+        image:GetPropertyChangedSignal("Size"):Connect(sync)
+    end
+    glyph.FontFace = asset.FontFace
+    glyph.Text = asset.Text
+end
+
 function Library:CreateWindow(config)
     config = config or {}
     assert(type(config) == "table", "CreateWindow expects an options table")
@@ -581,39 +653,16 @@ function Library:CreateWindow(config)
     local header = rounded("Frame", "Header", root, 0, 0, 584, 54, "Background", 17)
     header.BackgroundTransparency = 1
 
-    local iconAtlas = {
-        ["house"] = { 325, 675 },
-        ["binoculars"] = { 400, 50 },
-        ["globe"] = { 50, 900 },
-        ["settings"] = { 525, 900 },
-        ["cpu"] = { 500, 275 },
-        ["shopping-bag"] = { 925, 550 },
-        ["search"] = { 850, 575 },
-        ["sliders-horizontal"] = { 800, 700 },
-        ["layout-grid"] = { 825, 225 },
-        ["info"] = { 850, 175 },
-        ["palette"] = { 825, 400 },
-        ["check"] = { 400, 225 },
-        ["chevron-down"] = { 175, 450 },
-        ["bell"] = { 125, 300 },
-        ["bell-off"] = { 200, 225 },
-        ["keyboard"] = { 500, 525 },
-        ["copy"] = { 775, 0 },
-        ["arrow-left-right"] = { 50, 225 },
-    }
     local function icon(parent, name, x, y, size, color, role)
-        local coords = iconAtlas[name] or iconAtlas["layout-grid"]
         local image = Instance.new("ImageLabel")
         image.Name = "Icon"
         image.BackgroundTransparency = 1
         image.Position = UDim2.fromOffset(x, y)
         image.Size = UDim2.fromOffset(size, size)
-        image.Image = "rbxassetid://97854828246256"
-        image.ImageRectSize = Vector2.new(24, 24)
-        image.ImageRectOffset = Vector2.new(coords[1], coords[2])
         role = role or (type(color) == "string" and color or (color == nil and "Icon" or nil))
         image.ImageColor3 = role and Theme[role] or color
         if role then bindTheme(image, "ImageColor3", role) end
+        setIcon(image, name)
         image.Parent = parent
         return image
     end
@@ -2475,8 +2524,7 @@ function Library:CreateWindow(config)
             end
             function control:SetNotify(enabled)
                 self.Notify = enabled == true
-                local coords = iconAtlas["bell"]
-                bellIcon.ImageRectOffset = Vector2.new(coords[1], coords[2])
+                setIcon(bellIcon, "bell")
                 tween(bellIcon, {
                     ImageColor3 = self.Notify and "Text" or "Muted",
                     ImageTransparency = 0,
