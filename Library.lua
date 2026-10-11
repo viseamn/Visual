@@ -4070,8 +4070,6 @@ function Library:CreateWindow(config)
         end
         activeTab = target
         target.Fade = tween(target.Page, { GroupTransparency = 0, Position = UDim2.fromOffset(0, 0) }, 0.3)
-        -- The compact top bar widens the active tab to show its name.
-        if dockEdge == "Top" then refreshDockLayout(true) end
         filterCards()
     end
     local function addTab(config)
@@ -4709,18 +4707,16 @@ function Library:CreateWindow(config)
                     end)
                 end
             else
-                -- The top bar is the compact one (see refreshDockLayout): a slimmer pill, same width.
-                local compact = dockEdge == "Top"
                 dockSearch.AnchorPoint = Vector2.new(0, 0.5)
-                dockSearch.Position = UDim2.new(0, compact and 6 or 12, 0.5, 0)
-                dockSearch.Size = UDim2.fromOffset(148, compact and 32 or 36)
-                glyph.Position = UDim2.fromOffset(compact and 10 or 12, compact and 8 or 10)
+                dockSearch.Position = UDim2.new(0, 12, 0.5, 0)
+                dockSearch.Size = UDim2.fromOffset(148, 36)
+                glyph.Position = UDim2.fromOffset(12, 10)
                 divider.AnchorPoint = Vector2.new(0, 0.5)
-                divider.Position = UDim2.new(1, compact and 8 or 10, 0.5, 0)
-                divider.Size = UDim2.fromOffset(1, compact and 24 or 32)
+                divider.Position = UDim2.new(1, 10, 0.5, 0)
+                divider.Size = UDim2.fromOffset(1, 32)
                 box.Parent = dockSearch
-                box.Position = UDim2.fromOffset(compact and 32 or 36, 0)
-                box.Size = UDim2.new(1, compact and -40 or -46, 1, 0)
+                box.Position = UDim2.fromOffset(36, 0)
+                box.Size = UDim2.new(1, -46, 1, 0)
                 boxPadding.PaddingLeft, boxPadding.PaddingRight = UDim.new(0, 0), UDim.new(0, 0)
                 cardRevision = cardRevision + 1
                 card.Visible = false
@@ -4857,18 +4853,18 @@ function Library:CreateWindow(config)
         if dockEdge == "Right" then return high.X - area.X end
         return high.Y - area.Y
     end
-    -- Resting distance of the dock from its GUI-area edge. The compact top bar sits centred in Roblox's
-    -- own top-bar row, level with its buttons, instead of hanging below it.
+    -- Resting distance of the dock from its GUI-area edge. A top bar moves up into Roblox's own top-bar
+    -- row (centred on it, level with its buttons) instead of hanging below it.
     local function dockRestInward()
         if dockEdge == "Top" then
             local row = game:GetService("GuiService"):GetGuiInset().Y
-            if row >= 24 then return math.max(2, (row - 44 * dockFitScale) / 2) - dockScreenGap() end
+            if row >= 40 then return math.max(4, (row - 64 * dockFitScale) / 2) - dockScreenGap() end
         end
         return 14
     end
     local function renderDock()
         local progress = math.clamp(dockProgress, 0, 1)
-        local hiddenDepth = 12 + (dockEdge == "Top" and 44 or 64) * dockFitScale + dockScreenGap()
+        local hiddenDepth = 12 + 64 * dockFitScale + dockScreenGap()
         placeAtEdge(dockHost, (dockRestInward() + hiddenDepth) * dockProgress - hiddenDepth)
         -- Spring overshoot can leave a sliver on screen; fully parked means invisible.
         dockHost.Visible = dockProgress > 0.002 or dockExpanded
@@ -4890,37 +4886,19 @@ function Library:CreateWindow(config)
         end
         renderDock()
     end
-    refreshDockLayout = function(animate)
-        -- The top bar is compact, like Roblox's own top bar: 44px tall, 32px items, and the active tab is a
-        -- pill with its name while the others show only their icon.
-        local compact = dockEdge == "Top"
-        local navWidth = 0
-        for index, tab in ipairs(tabs) do
-            local width = compact and 32 or 44
-            if compact and tab == activeTab then
-                local font = fontName == "BuilderSans" and Enum.Font.BuilderSans or fontChoices[fontName]
-                local text = game:GetService("TextService"):GetTextSize(tab.Name, 12, font, Vector2.new(400, 32))
-                width = 40 + math.ceil(text.X)
-            end
-            navWidth = navWidth + width + (index > 1 and 4 or 0)
-            motion(tab.Button, { Size = UDim2.fromOffset(width, compact and 32 or 44) }, 0.22, not animate)
-            tab.Button.ClipsDescendants = compact
-            tab.Button:FindFirstChildOfClass("UICorner").CornerRadius = UDim.new(0, compact and 16 or 10)
-            tab.Icon.Position = UDim2.fromOffset(compact and 7 or 11, compact and 7 or 11)
-            tab.Icon.Size = UDim2.fromOffset(compact and 18 or 22, compact and 18 or 22)
-            tab.Title.Position = UDim2.fromOffset(30, 0)
-            tab.Title.Size = UDim2.new(0, math.max(0, width - 36), 1, 0)
-            tab.Title.Visible = compact and tab == activeTab
+    refreshDockLayout = function()
+        for _, tab in ipairs(tabs) do
+            tab.Button.Size = UDim2.fromOffset(44, 44)
+            tab.Icon.Position = UDim2.fromOffset(11, 11)
+            tab.Icon.Size = UDim2.fromOffset(22, 22)
+            tab.Title.Visible = false
         end
         -- The bar is laid out along its edge: search, tabs, then a divider and the profile at the far end.
         local vertical = dockVertical()
         local searchSpan = searchStyle ~= "Bar" and 0 or vertical and 58 or 164
         local available = vertical and viewport.AbsoluteSize.Y or viewport.AbsoluteSize.X
-        local natural = compact and (searchSpan > 0 and 171 or 8) + navWidth + 53 or 76 + searchSpan + #tabs * 52
-        local length = math.min(natural, math.max(128 + searchSpan, available - 24))
-        motion(dockHost, {
-            Size = vertical and UDim2.fromOffset(64, length) or UDim2.fromOffset(length, compact and 44 or 64),
-        }, 0.22, not animate)
+        local length = math.min(76 + searchSpan + #tabs * 52, math.max(128 + searchSpan, available - 24))
+        dockHost.Size = vertical and UDim2.fromOffset(64, length) or UDim2.fromOffset(length, 64)
         dockFitScale = math.min(root:GetAttribute("DPIScale") or 1, math.max(0.1, (available - 24) / length))
         dockReveal.Size = vertical and UDim2.fromOffset(20, 104) or UDim2.fromOffset(104, 20)
         renderDock()
@@ -4934,15 +4912,6 @@ function Library:CreateWindow(config)
             profile.Position = UDim2.new(0.5, 0, 1, -12)
             dockDivider.Size = UDim2.fromOffset(32, 1)
             dockDivider.Position = UDim2.new(0, 16, 1, -62)
-        elseif compact then
-            -- Search 6..154, divider, tabs from 171, then divider and a 30px avatar 7px from the end.
-            local start = searchSpan > 0 and 171 or 8
-            navigationGroup.Position = UDim2.fromOffset(start, 0)
-            navigationGroup.Size = UDim2.new(1, -start - 53, 1, 0)
-            profile.AnchorPoint = Vector2.new(1, 0.5)
-            profile.Position = UDim2.new(1, -7, 0.5, 0)
-            dockDivider.Size = UDim2.fromOffset(1, 24)
-            dockDivider.Position = UDim2.new(1, -45, 0, 10)
         else
             navigationGroup.Position = UDim2.fromOffset(8 + searchSpan, 6)
             navigationGroup.Size = UDim2.new(1, -72 - searchSpan, 0, 52)
@@ -4951,11 +4920,10 @@ function Library:CreateWindow(config)
             dockDivider.Size = UDim2.fromOffset(1, 32)
             dockDivider.Position = UDim2.new(1, -62, 0, 16)
         end
-        profile.Size = UDim2.fromOffset(compact and 30 or 40, compact and 30 or 40)
-        navigationLayout.Padding = UDim.new(0, compact and 4 or 8)
-        local inset = UDim.new(0, compact and 0 or 4)
-        navigationPadding.PaddingTop, navigationPadding.PaddingBottom = inset, inset
-        navigationPadding.PaddingLeft, navigationPadding.PaddingRight = inset, inset
+        navigationPadding.PaddingTop = UDim.new(0, 4)
+        navigationPadding.PaddingBottom = UDim.new(0, 4)
+        navigationPadding.PaddingLeft = UDim.new(0, 4)
+        navigationPadding.PaddingRight = UDim.new(0, 4)
     end
     local function setLayoutStyle(value)
         assert(layoutEdges[value], "Layout must be Bottom bar, Top bar, Left bar or Right bar")
@@ -5001,7 +4969,7 @@ function Library:CreateWindow(config)
         local minimumScale, hostPadding = 0.14, 12
         -- The centre of the dock, where the window shrinks into when hidden.
         local function landingPoint()
-            local inward = dockRestInward() + (dockEdge == "Top" and 22 or 32) * dockFitScale
+            local inward = dockRestInward() + 32 * dockFitScale
             local size = viewport.AbsoluteSize
             if dockEdge == "Top" then return Vector2.new(size.X / 2, inward) end
             if dockEdge == "Left" then return Vector2.new(inward, size.Y / 2) end
@@ -5111,7 +5079,7 @@ function Library:CreateWindow(config)
         -- The pointer can be past the GUI area (e.g. over Roblox's top bar) and still be at the screen edge.
         local near = math.abs(along) <= half
             and depth >= -(2 + dockScreenGap())
-            and depth <= (dockExpanded and 32 + (dockEdge == "Top" and 44 or 64) * dockFitScale or 18)
+            and depth <= (dockExpanded and 32 + 64 * dockFitScale or 18)
         if near then dockHoverUntil = now + 0.65 end
         local expanded = near or now < dockHoverUntil
         if expanded ~= dockExpanded then showDock(expanded) end
