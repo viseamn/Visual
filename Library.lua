@@ -968,8 +968,6 @@ function Library:CreateWindow(config)
         -- A centred stack on the same edge as the dock would sit on the bar, so push it clear.
         local lift = 0
         if position == "Bottom" and dockEdge == "Bottom" then lift = -78 end
-        -- A top bar normally lives in Roblox's top-bar strip (above the GUI area); only lift when it can't.
-        if position == "Top" and dockEdge == "Top" and -screenBounds().Y < 40 then lift = 78 end
         toastStack.AnchorPoint = anchor
         toastStack.Position = UDim2.new(anchor.X, 0, anchor.Y, lift)
         toastStack.Size = UDim2.new(1, 0, 1, -math.abs(lift))
@@ -4908,12 +4906,13 @@ function Library:CreateWindow(config)
         local progress = math.clamp(dockProgress, 0, 1)
         local hiddenDepth = 12 + (dockEdge == "Top" and 48 or 64) * dockFitScale + dockScreenGap()
         placeAtEdge(dockHost, (dockRestInward() + hiddenDepth) * dockProgress - hiddenDepth)
-        -- Spring overshoot can leave a sliver on screen; fully parked means invisible.
-        dockHost.Visible = dockProgress > 0.002 or dockExpanded
+        -- Spring overshoot can leave a sliver on screen; fully parked means invisible. A top bar sits in the
+        -- window header instead, so the floating dock stays hidden.
+        dockHost.Visible = dockEdge ~= "Top" and (dockProgress > 0.002 or dockExpanded)
         dockScale.Scale = dockFitScale * (0.94 + 0.06 * dockProgress)
         dockGlass.BackgroundTransparency = (0.08 + (1 - progress) * 0.22) * glassOpacityFactor
         dockRim.Transparency = 0.92 + (1 - progress) * 0.08
-        local reveal = dockAutoHide and (1 - progress) or 0
+        local reveal = dockAutoHide and dockEdge ~= "Top" and (1 - progress) or 0
         dockReveal.Visible = reveal > 0.005
         dockReveal.Interactable = not dockExpanded and reveal > 0.2
         placeAtEdge(dockReveal, 2 - dockScreenGap() - 6 * progress)
@@ -4962,7 +4961,23 @@ function Library:CreateWindow(config)
         local available = vertical and viewport.AbsoluteSize.Y or viewport.AbsoluteSize.X
         local length = strip and (16 + tabSpan + searchSpan)
             or math.min(76 + searchSpan + #tabs * 52, math.max(128 + searchSpan, available - 24))
-        if strip then length = math.min(length, math.max(96 + searchSpan, available - 24)) end
+        -- The strip lives in the window header: centred, or after the logo when the header search field is
+        -- shown on the right. It never runs under the logo or the field; extra tabs scroll.
+        local headerSearch = strip and searchStyle == "Header"
+        if strip then
+            local room = root.Size.X.Offset - (headerSearch and 60 + 242 or 120)
+            length = math.min(length, math.max(96 + searchSpan, room))
+            sidebar.Parent = header
+            sidebar.AnchorPoint = Vector2.new(headerSearch and 0 or 0.5, 0.5)
+            sidebar.Position = headerSearch and UDim2.new(0, 60, 0.5, 0) or UDim2.fromScale(0.5, 0.5)
+            sidebar.Size = UDim2.fromOffset(length, 48)
+        else
+            sidebar.Parent = dockHost
+            sidebar.AnchorPoint = Vector2.zero
+            sidebar.Position = UDim2.fromOffset(0, 0)
+        end
+        header.ZIndex = strip and 3 or 1
+        searchField.Position = strip and UDim2.new(1, -234, 0, 13) or UDim2.fromOffset(66, 13)
         dockHost.Size = vertical and UDim2.fromOffset(thickness, length) or UDim2.fromOffset(length, thickness)
         dockGlass:FindFirstChildOfClass("UICorner").CornerRadius = UDim.new(0, strip and 16 or 22)
         profile.Visible = not strip
@@ -4970,7 +4985,7 @@ function Library:CreateWindow(config)
         dockFitScale = math.min(root:GetAttribute("DPIScale") or 1, math.max(0.1, (available - 24) / length))
         dockReveal.Size = vertical and UDim2.fromOffset(20, 104) or UDim2.fromOffset(104, 20)
         renderDock()
-        sidebar.Size = UDim2.fromScale(1, 1)
+        if not strip then sidebar.Size = UDim2.fromScale(1, 1) end
         dockSearch.Visible = searchStyle == "Bar"
         layoutDockSearch()
         if strip then
@@ -4997,6 +5012,10 @@ function Library:CreateWindow(config)
         navigationLayout.Padding = UDim.new(0, strip and 4 or 8)
         if activeTab then selectTab(activeTab, true) end
     end
+    -- The header strip is limited by the window width, so refit it when the window is resized.
+    root:GetPropertyChangedSignal("Size"):Connect(function()
+        if dockEdge == "Top" then refreshDockLayout() end
+    end)
     local function setLayoutStyle(value)
         assert(layoutEdges[value], "Layout must be Bottom bar, Top bar, Left bar or Right bar")
         layoutStyle, dockEdge = value, layoutEdges[value]
@@ -5131,7 +5150,7 @@ function Library:CreateWindow(config)
     dockReveal.MouseLeave:Connect(function() revealHover = false end)
     track(viewport:GetPropertyChangedSignal("AbsoluteSize"):Connect(refreshDockLayout))
     local function updateDockHover(mouse, now)
-        if not dockAutoHide then return end
+        if not dockAutoHide or dockEdge == "Top" then return end
         -- Typing in the bar's search (pill or side card) keeps it out, wherever the pointer is.
         local focused = UserInputService:GetFocusedTextBox()
         if focused and focused:IsDescendantOf(dockHost) then
