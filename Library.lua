@@ -2278,7 +2278,8 @@ function Library:CreateWindow(config)
             -- A key chip flush with the row's right edge, like the other right-hand controls, sized to its label.
             local button = rounded("TextButton", "Keybind", container, 0, 3, 24, 22, "Search", 6)
             button.AnchorPoint = Vector2.new(1, 0)
-            button.Position = UDim2.new(1, 0, 0, 3)
+            -- 1px in from the edge: the border is drawn outside the chip, and rows clip at their right edge.
+            button.Position = UDim2.new(1, -1, 0, 3)
             button.TextSize = 11
             setUIFont(button, true)
             local keyBorder = Instance.new("UIStroke")
@@ -2300,7 +2301,7 @@ function Library:CreateWindow(config)
                 local textWidth = game:GetService("TextService")
                     :GetTextSize(button.Text, 11, Enum.Font.BuilderSansMedium, Vector2.new(200, 22)).X
                 button.Size = UDim2.fromOffset(math.clamp(math.ceil(textWidth) + 14, 24, 96), 22)
-                text.Size = UDim2.new(1, -button.Size.X.Offset - 8, 1, 0)
+                text.Size = UDim2.new(1, -button.Size.X.Offset - 9, 1, 0)
                 tween(button, { TextColor3 = listening and "Accent" or "Text" }, 0.12)
                 tween(keyBorder, { Color = listening and "Accent" or "Border" }, 0.12)
             end
