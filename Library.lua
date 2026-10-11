@@ -2392,216 +2392,6 @@ function Library:CreateWindow(config)
             bindTheme(object, "TextColor3", "Muted")
             return object
         end
-        -- Static ESP mock-up: a figure with box, skeleton, bars and text slots, all drawn with frames on a
-        -- 240x300 stage that shrinks to fit the column. Change any part with preview:Set(name, properties).
-        function group:AddESPPreview(options)
-            options = options or {}
-            local container = row(options.Name or "ESP Preview", 300)
-            local stage = Instance.new("Frame")
-            stage.Name = "Stage"
-            stage.AnchorPoint = Vector2.new(0.5, 0)
-            stage.Position = UDim2.fromScale(0.5, 0)
-            stage.Size = UDim2.fromOffset(240, 300)
-            stage.BackgroundTransparency = 1
-            stage.Parent = container
-            local stageScale = Instance.new("UIScale")
-            stageScale.Parent = stage
-            -- 100px probe: its on-screen width gives the scale of everything above, so the column width
-            -- can be measured in layout pixels however the window, DPI or a detached card is scaled.
-            local probe = Instance.new("Frame")
-            probe.BackgroundTransparency = 1
-            probe.Size = UDim2.fromOffset(100, 0)
-            probe.Parent = container
-            local function fit()
-                local unit = probe.AbsoluteSize.X / 100
-                if unit <= 0 then return end
-                stageScale.Scale = math.min(1, container.AbsoluteSize.X / unit / 240)
-                container.Size = UDim2.new(1, 0, 0, math.ceil(300 * stageScale.Scale))
-            end
-            container:GetPropertyChangedSignal("AbsoluteSize"):Connect(fit)
-            fit()
-
-            local function block(name, x, y, width, height, radius, rotation)
-                local object = rounded("Frame", name, stage, x, y, width, height, Color3.new(1, 1, 1), radius)
-                object.AnchorPoint = Vector2.new(0.5, 0.5)
-                object.Rotation = rotation or 0
-                return object
-            end
-            -- A line between two stage points: a thin bar centred on the midpoint, rotated to match.
-            local function line(parent, a, b, thickness)
-                local delta = b - a
-                local object = Instance.new("Frame")
-                object.BorderSizePixel = 0
-                object.AnchorPoint = Vector2.new(0.5, 0.5)
-                object.Position = UDim2.fromOffset((a.X + b.X) / 2, (a.Y + b.Y) / 2)
-                object.Size = UDim2.fromOffset(delta.Magnitude + thickness, thickness)
-                object.Rotation = math.deg(math.atan2(delta.Y, delta.X))
-                object.Parent = parent
-                local corner = Instance.new("UICorner")
-                corner.CornerRadius = UDim.new(0.5, 0)
-                corner.Parent = object
-                return object
-            end
-            local function layer(name)
-                local holder = Instance.new("Frame")
-                holder.Name = name
-                holder.BackgroundTransparency = 1
-                holder.Size = UDim2.fromScale(1, 1)
-                holder.Parent = stage
-                return holder
-            end
-
-            -- Body: head, neck, torso, arms and legs around centre x = 120.
-            local body = {
-                block("Head", 120, 50, 26, 26, 13),
-                block("Neck", 120, 66, 10, 10, 3),
-                block("Torso", 120, 108, 46, 84, 10),
-                block("LeftArm", 84, 110, 13, 78, 6, 10),
-                block("RightArm", 156, 110, 13, 78, 6, -10),
-                block("LeftLeg", 109, 196, 18, 96, 8, 3),
-                block("RightLeg", 131, 196, 18, 96, 8, -3),
-            }
-
-            local skeleton = layer("Skeleton")
-            local joints = {
-                Head = Vector2.new(120, 52), Neck = Vector2.new(120, 64), Pelvis = Vector2.new(120, 146),
-                LShoulder = Vector2.new(100, 74), LElbow = Vector2.new(84, 110), LHand = Vector2.new(78, 146),
-                RShoulder = Vector2.new(140, 74), RElbow = Vector2.new(156, 110), RHand = Vector2.new(162, 146),
-                LHip = Vector2.new(111, 148), LKnee = Vector2.new(108, 194), LFoot = Vector2.new(106, 240),
-                RHip = Vector2.new(129, 148), RKnee = Vector2.new(132, 194), RFoot = Vector2.new(134, 240),
-            }
-            for _, bone in ipairs({
-                { "Head", "Neck" }, { "Neck", "Pelvis" },
-                { "Neck", "LShoulder" }, { "LShoulder", "LElbow" }, { "LElbow", "LHand" },
-                { "Neck", "RShoulder" }, { "RShoulder", "RElbow" }, { "RElbow", "RHand" },
-                { "Pelvis", "LHip" }, { "LHip", "LKnee" }, { "LKnee", "LFoot" },
-                { "Pelvis", "RHip" }, { "RHip", "RKnee" }, { "RKnee", "RFoot" },
-            }) do
-                line(skeleton, joints[bone[1]], joints[bone[2]], 2)
-            end
-
-            -- Box from (50, 28) to (190, 256): either corner brackets or a full outline.
-            local corners = layer("CornerBox")
-            local left, top, right, bottom, arm = 50, 28, 190, 256, 20
-            for _, corner in ipairs({ { left, top, 1, 1 }, { right, top, -1, 1 }, { left, bottom, 1, -1 },
-                { right, bottom, -1, -1 } }) do
-                local point = Vector2.new(corner[1], corner[2])
-                line(corners, point, point + Vector2.new(arm * corner[3], 0), 2)
-                line(corners, point, point + Vector2.new(0, arm * corner[4]), 2)
-            end
-            local fullBox = layer("FullBox")
-            fullBox.Position = UDim2.fromOffset(left, top)
-            fullBox.Size = UDim2.fromOffset(right - left, bottom - top)
-            local fullStroke = Instance.new("UIStroke")
-            fullStroke.Thickness = 2
-            fullStroke.Parent = fullBox
-
-            local function bar(name, x)
-                local track = rounded("Frame", name, stage, x, 46, 4, 210, "Navigation", 2)
-                local fill = rounded("Frame", "Fill", track, 0, 0, 4, 0, Color3.new(1, 1, 1), 2)
-                fill.AnchorPoint = Vector2.new(0, 1)
-                fill.Position = UDim2.fromScale(0, 1)
-                return track, fill
-            end
-            local healthTrack, healthFill = bar("HealthBar", 34)
-            local armorTrack, armorFill = bar("ArmorBar", 202)
-
-            -- ESP colours are the user's, so these labels are not bound to the theme.
-            local function text(name, x, y, width, alignment)
-                local object = Instance.new("TextLabel")
-                object.Name = name
-                object.BackgroundTransparency = 1
-                setUIFont(object)
-                object.TextSize = 12
-                object.Parent = stage
-                object.Position = UDim2.fromOffset(x, y)
-                object.Size = UDim2.fromOffset(width, 16)
-                object.TextXAlignment = alignment or Enum.TextXAlignment.Left
-                object.TextTruncate = Enum.TextTruncate.AtEnd
-                return object
-            end
-            local texts = {
-                Team = text("Team", 0, 4, 84),
-                Level = text("Level", 84, 4, 72, Enum.TextXAlignment.Center),
-                Name = text("Name", 156, 4, 84, Enum.TextXAlignment.Right),
-                Id = text("Id", 196, 26, 44),
-                Flag = text("Flag", 0, 262, 114, Enum.TextXAlignment.Right),
-                Distance = text("Distance", 126, 262, 114),
-                Weapon = text("Weapon", 0, 280, 240, Enum.TextXAlignment.Center),
-            }
-
-            local preview = { Frame = container, State = {} }
-            local function paint(name, state)
-                if texts[name] then
-                    local object = texts[name]
-                    object.Visible = state.Visible ~= false
-                    object.Text = tostring(state.Text or "")
-                    object.TextColor3 = state.Color
-                elseif name == "Body" then
-                    for _, part in ipairs(body) do
-                        part.Visible = state.Visible ~= false
-                        part.BackgroundColor3 = state.Color
-                        part.BackgroundTransparency = state.Transparency or 0
-                    end
-                elseif name == "Skeleton" then
-                    skeleton.Visible = state.Visible ~= false
-                    for _, bone in ipairs(skeleton:GetChildren()) do bone.BackgroundColor3 = state.Color end
-                elseif name == "Box" then
-                    local full = state.Style == "Full"
-                    corners.Visible = state.Visible ~= false and not full
-                    fullBox.Visible = state.Visible ~= false and full
-                    fullStroke.Color = state.Color
-                    for _, piece in ipairs(corners:GetChildren()) do piece.BackgroundColor3 = state.Color end
-                elseif name == "Health" or name == "Armor" then
-                    local track = name == "Health" and healthTrack or armorTrack
-                    local fill = name == "Health" and healthFill or armorFill
-                    track.Visible = state.Visible ~= false
-                    fill.BackgroundColor3 = state.Color
-                    fill.Size = UDim2.new(1, 0, math.clamp(tonumber(state.Value) or 1, 0, 1), 0)
-                end
-            end
-            function preview:Set(name, properties)
-                local state = self.State[name]
-                assert(state, "Unknown ESP preview part: " .. tostring(name))
-                assert(type(properties) == "table", "ESP preview Set expects a properties table")
-                for key, value in pairs(properties) do state[key] = value end
-                paint(name, state)
-            end
-            function preview:Get(name) return self.State[name] end
-            function preview:Destroy() container:Destroy() end
-
-            local defaults = {
-                Body = { Visible = true, Color = Color3.fromRGB(78, 80, 88), Transparency = 0.15 },
-                Skeleton = { Visible = true, Color = Color3.fromRGB(235, 235, 240) },
-                Box = { Visible = true, Color = Color3.fromRGB(235, 235, 240), Style = "Corner" },
-                Health = { Visible = true, Value = 0.7, Color = Color3.fromRGB(70, 130, 255) },
-                Armor = { Visible = true, Value = 1, Color = Color3.fromRGB(240, 240, 245) },
-                Team = { Visible = true, Text = "TEAM", Color = Color3.fromRGB(70, 130, 255) },
-                Level = { Visible = true, Text = "[100]", Color = Color3.fromRGB(235, 235, 240) },
-                Name = {
-                    Visible = true,
-                    Text = game:GetService("Players").LocalPlayer.DisplayName,
-                    Color = Color3.fromRGB(235, 235, 240),
-                },
-                Id = {
-                    Visible = true,
-                    Text = "#" .. game:GetService("Players").LocalPlayer.UserId,
-                    Color = Color3.fromRGB(235, 235, 240),
-                },
-                Flag = { Visible = true, Text = "F42", Color = Color3.fromRGB(255, 170, 40) },
-                Distance = { Visible = true, Text = "50m", Color = Color3.fromRGB(235, 235, 240) },
-                Weapon = { Visible = true, Text = "Rifle", Color = Color3.fromRGB(255, 80, 80) },
-            }
-            local overrides = type(options.Elements) == "table" and options.Elements or {}
-            for name, state in pairs(defaults) do
-                preview.State[name] = state
-                if type(overrides[name]) == "table" then
-                    for key, value in pairs(overrides[name]) do state[key] = value end
-                end
-                paint(name, state)
-            end
-            return preview
-        end
         function group:AddColorPicker(options)
             options = options or {}
             local container = row(options.Name or "Color picker", 28)
@@ -2642,6 +2432,40 @@ function Library:CreateWindow(config)
             bindTheme(keyBorder, "Color", "Border")
             keyBorder.Parent = keyButton
             animateButton(keyButton, "Search")
+            -- Keybind popup: the mode (Toggle / Hold) on top, and a box below that listens for the next key.
+            local bindMenu = rounded("CanvasGroup", "KeybindMenu", dropdownOverlay, 0, 0, 176, 74, "Card", 9)
+            bindMenu.ZIndex = 2
+            bindMenu.Visible = false
+            bindMenu.Active = true
+            local bindScale = Instance.new("UIScale")
+            bindScale.Parent = bindMenu
+            local bindBorder = Instance.new("UIStroke")
+            bindTheme(bindBorder, "Color", "Border")
+            bindBorder.Transparency = 1
+            bindBorder.Parent = bindMenu
+            local modeStrip = rounded("Frame", "Mode", bindMenu, 6, 6, 164, 28, "Search", 6)
+            local modeHighlight = rounded("Frame", "Highlight", modeStrip, 2, 2, 80, 24, "Navigation", 5)
+            local modeButtons = {}
+            for index, mode in ipairs({ "Toggle", "Hold" }) do
+                local choice = rounded("TextButton", mode, modeStrip, 2 + (index - 1) * 80, 2, 80, 24, "Search", 5)
+                choice.BackgroundTransparency = 1
+                choice.ZIndex = 2
+                choice.Text = mode
+                choice.TextSize = 12
+                setUIFont(choice, true)
+                bindTheme(choice, "TextColor3", "Muted")
+                modeButtons[mode] = choice
+            end
+            local keyBox = rounded("TextButton", "Key", bindMenu, 6, 40, 164, 28, "Search", 6)
+            keyBox.TextSize = 12
+            keyBox.TextTruncate = Enum.TextTruncate.AtEnd
+            setUIFont(keyBox, true)
+            bindTheme(keyBox, "TextColor3", "Text")
+            local keyBoxBorder = Instance.new("UIStroke")
+            bindTheme(keyBoxBorder, "Color", "Border")
+            keyBoxBorder.Parent = keyBox
+            animateButton(keyBox, "Search")
+            local bindPopup, bindTuck = { Options = bindMenu, Trigger = keyButton, Revision = 0 }, -6
             local button = rounded("TextButton", "Switch", container, 0, 4, 34, 20, "Navigation", 10)
             button.Position = UDim2.new(1, -34, 0, 4)
             local switchGlow = elementGlow(button, { Spread = 8, Radius = 10, Strength = 0.7, Role = "Accent", Level = 0 })
@@ -2657,6 +2481,80 @@ function Library:CreateWindow(config)
                 Modifiers = {},
                 Name = options.Name or "Toggle",
             }
+            local function refreshBindMenu()
+                local listening = capturingKeybind == control
+                local unset = control.Keybind == Enum.KeyCode.Unknown
+                local keys = {}
+                for _, modifier in ipairs({ "Ctrl", "Shift", "Alt" }) do
+                    if control.Modifiers[modifier] then table.insert(keys, modifier) end
+                end
+                table.insert(keys, control.Keybind.Name)
+                keyBox.Text = listening and "Press a key..." or (unset and "None" or table.concat(keys, " + "))
+                tween(keyBox, { TextColor3 = listening and "Accent" or (unset and "Muted" or "Text") }, 0.15)
+                tween(keyBoxBorder, { Color = listening and "Accent" or "Border" }, 0.15)
+                local active = modeButtons[control.KeybindMode]
+                for mode, choice in pairs(modeButtons) do
+                    tween(choice, { TextColor3 = mode == control.KeybindMode and "Text" or "Muted" }, 0.15)
+                end
+                modeHighlight.Visible = active ~= nil
+                if active then motion(modeHighlight, { Position = active.Position }, 0.18, not bindMenu.Visible) end
+            end
+            function bindPopup:Open()
+                cancelKeyCapture()
+                closeDropdown(true)
+                self.Revision = self.Revision + 1
+                if self.Animation then self.Animation:Cancel() end
+                openDropdown = self
+                refreshBindMenu()
+                local width, height = 176, 74
+                local available = viewport.AbsoluteSize
+                local factor =
+                    math.max(0.01, math.min(scale.Scale, (available.X - 16) / width, (available.Y - 16) / height))
+                bindScale.Scale = factor
+                local origin = keyButton.AbsolutePosition - viewport.AbsolutePosition
+                local below = origin.Y + keyButton.AbsoluteSize.Y + 6 * factor
+                local y = below + height * factor <= available.Y - 8 and below
+                    or origin.Y - height * factor - 6 * factor
+                local x = math.clamp(
+                    origin.X + keyButton.AbsoluteSize.X - width * factor,
+                    8,
+                    math.max(8, available.X - width * factor - 8)
+                )
+                y = math.clamp(y, 8, math.max(8, available.Y - height * factor - 8))
+                -- Grows out of the key button, like the dropdown menus.
+                bindTuck = (y < origin.Y and 6 or -6) * factor
+                bindMenu.Position = UDim2.fromOffset(x, y + bindTuck)
+                setGroupTransparency(bindMenu, 1)
+                motion(bindBorder, { Transparency = 1 }, 0, true)
+                motion(bindBorder, { Transparency = 0.2 }, 0.18)
+                bindMenu.Visible, dropdownOverlay.Visible = true, true
+                self.Animation = tween(bindMenu, { GroupTransparency = 0, Position = UDim2.fromOffset(x, y) }, 0.18)
+            end
+            function bindPopup:Close(immediate)
+                if capturingKeybind == control then cancelKeyCapture() end
+                self.Revision = self.Revision + 1
+                local revision = self.Revision
+                if self.Animation then self.Animation:Cancel() end
+                local function finish()
+                    if self.Revision ~= revision then return end
+                    bindMenu.Visible = false
+                    if not openDropdown then dropdownOverlay.Visible = false end
+                end
+                if immediate then
+                    setGroupTransparency(bindMenu, 1)
+                    motion(bindBorder, { Transparency = 1 }, 0, true)
+                    finish()
+                else
+                    -- GroupTransparency does not fade the CanvasGroup's own UIStroke, so fade it separately.
+                    local rest = bindMenu.Position
+                    self.Animation = tween(bindMenu, {
+                        GroupTransparency = 1,
+                        Position = UDim2.fromOffset(rest.X.Offset, rest.Y.Offset + bindTuck),
+                    }, 0.14)
+                    motion(bindBorder, { Transparency = 1 }, 0.1)
+                    task.delay(animationDuration(0.14), finish)
+                end
+            end
             function control:RefreshKeybind()
                 local listening = capturingKeybind == self
                 local iconOnly = not listening and self.Keybind == Enum.KeyCode.Unknown
@@ -2672,6 +2570,7 @@ function Library:CreateWindow(config)
                 keyButton.Text = iconOnly and "" or (listening and "..." or shortKeyNames[keyName] or keyName)
                 tween(keyButton, { TextColor3 = listening and "Accent" or "Muted" }, 0.15)
                 tween(keyBorder, { Color = listening and "Accent" or "Border" }, 0.15)
+                refreshBindMenu()
                 refreshKeybindMenu()
             end
             function control:AddColorPicker(colorOptions)
@@ -2736,6 +2635,7 @@ function Library:CreateWindow(config)
                 end
                 self.KeybindMode = mode
                 if mode == "Always" then self:Set(true, silent) end
+                refreshBindMenu()
                 refreshKeybindMenu()
             end
             function control:SetNotify(enabled)
@@ -2782,18 +2682,26 @@ function Library:CreateWindow(config)
             end)
             keyButton.Activated:Connect(function()
                 if not canInteract(container) then return end
+                if openDropdown == bindPopup then closeDropdown() else bindPopup:Open() end
+            end)
+            for mode, choice in pairs(modeButtons) do
+                choice.Activated:Connect(function()
+                    if canInteract(container) then control:SetKeybindMode(mode) end
+                end)
+            end
+            -- Click to listen; the next key (with Ctrl/Shift/Alt) is the bind. Escape cancels, Backspace clears.
+            keyBox.Activated:Connect(function()
+                if not canInteract(container) then return end
                 local wasCapturing = capturingKeybind == control
                 cancelKeyCapture()
                 if not wasCapturing then
+                    releaseHolds()
                     capturingKeybind = control
                     control:RefreshKeybind()
-                    notify({
-                        Title = "Set keybind",
-                        Content = "Press a key (Ctrl/Shift/Alt allowed). Escape: cancel / Backspace: clear.",
-                        Icon = "keyboard",
-                        Duration = 4,
-                    })
                 end
+            end)
+            tab.Columns[side]:GetPropertyChangedSignal("CanvasPosition"):Connect(function()
+                if openDropdown == bindPopup then closeDropdown(true) end
             end)
             local completedDragInput
             button.InputBegan:Connect(function(input)
@@ -2844,6 +2752,8 @@ function Library:CreateWindow(config)
             end)
             container.Destroying:Connect(function()
                 if activeToggleDrag and activeToggleDrag.Control == control then activeToggleDrag = nil end
+                if openDropdown == bindPopup then closeDropdown(true) end
+                bindMenu:Destroy()
                 keybindControls[control] = nil
                 refreshKeybindMenu()
                 if capturingKeybind == control then capturingKeybind = nil end
