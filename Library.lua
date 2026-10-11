@@ -897,6 +897,16 @@ function Library:CreateWindow(config)
         local baseRole = type(baseColor) == "string" and baseColor or nil
         button.MouseEnter:Connect(function()
             hovering = true
+            -- Roblox still sends MouseEnter to buttons under an open popup; don't light those up.
+            local popup = openDropdown and openDropdown.Options
+            if popup and popup.Visible and not button:IsDescendantOf(popup) then
+                local mouse = UserInputService:GetMouseLocation() - game:GetService("GuiService"):GetGuiInset()
+                local origin, size = popup.AbsolutePosition, popup.AbsoluteSize
+                if mouse.X >= origin.X and mouse.X <= origin.X + size.X
+                    and mouse.Y >= origin.Y and mouse.Y <= origin.Y + size.Y then
+                    return
+                end
+            end
             tween(button, { BackgroundColor3 = "Hover" }, 0.16)
         end)
         button.MouseLeave:Connect(function()
@@ -1413,6 +1423,11 @@ function Library:CreateWindow(config)
         border.Transparency = 1
         border.Parent = panel
         local panelTuck = -6
+        -- Swallows presses and hover on the panel's padding so they never reach the rows underneath.
+        local panelBlocker = rounded("TextButton", "InputBlocker", panel, 0, 0, 0, 0, "Background", 8)
+        panelBlocker.Size = UDim2.fromScale(1, 1)
+        panelBlocker.BackgroundTransparency = 1
+        panelBlocker.ZIndex = 0
 
         local square = rounded("TextButton", "SaturationValue", panel, 14, 11, 146, 146, Color3.new(1, 1, 1), 4)
         square.BackgroundTransparency = 1
@@ -2260,12 +2275,19 @@ function Library:CreateWindow(config)
             local container = row(options.Name or "Keybind", 28)
             local text = label(container, options.Name or "Keybind")
             text.Size = UDim2.new(1, -32, 1, 0)
+            -- A key chip flush with the row's right edge, like the other right-hand controls, sized to its label.
             local button = rounded("TextButton", "Keybind", container, 0, 3, 24, 22, "Search", 6)
-            button.Position = UDim2.new(1, -24, 0, 3)
-            button.BackgroundTransparency = 1
-            button.TextSize = 10
+            button.AnchorPoint = Vector2.new(1, 0)
+            button.Position = UDim2.new(1, 0, 0, 3)
+            button.TextSize = 11
             setUIFont(button, true)
-            local keyboardIcon = icon(button, "keyboard", 5, 4, 14)
+            local keyBorder = Instance.new("UIStroke")
+            keyBorder.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+            bindTheme(keyBorder, "Color", "Border")
+            keyBorder.Parent = button
+            local keyboardIcon = icon(button, "keyboard", 0, 0, 14)
+            keyboardIcon.AnchorPoint = Vector2.new(0.5, 0.5)
+            keyboardIcon.Position = UDim2.fromScale(0.5, 0.5)
             button.TextTruncate = Enum.TextTruncate.AtEnd
             animateButton(button, "Search")
             local control = { Keybind = Enum.KeyCode.Unknown, Modifiers = {}, AllowModifierKey = true }
@@ -2275,7 +2297,12 @@ function Library:CreateWindow(config)
                 keyboardIcon.Visible = iconOnly
                 button.Text = iconOnly and ""
                     or (listening and "..." or shortKeyNames[self.Keybind.Name] or self.Keybind.Name)
-                tween(button, { TextColor3 = listening and "Accent" or "Muted" }, 0.12)
+                local textWidth = game:GetService("TextService")
+                    :GetTextSize(button.Text, 11, Enum.Font.BuilderSansMedium, Vector2.new(200, 22)).X
+                button.Size = UDim2.fromOffset(math.clamp(math.ceil(textWidth) + 14, 24, 96), 22)
+                text.Size = UDim2.new(1, -button.Size.X.Offset - 8, 1, 0)
+                tween(button, { TextColor3 = listening and "Accent" or "Text" }, 0.12)
+                tween(keyBorder, { Color = listening and "Accent" or "Border" }, 0.12)
             end
             function control:SetModifiers(value)
                 self.Modifiers = {}
@@ -2901,6 +2928,47 @@ function Library:CreateWindow(config)
             local lowKnob = isRange and thumb("LowKnob") or nil
             local highKnob = thumb(isRange and "HighKnob" or "Knob")
             local control = {}
+            -- The fill and thumbs glide toward a goal (as track fractions) every frame instead of restarting a
+            -- tween on each mouse move, so dragging stays smooth even with coarse steps.
+            local shown, goal, animator = { 0, 0 }, { 0, 0 }, nil
+            local function paint()
+                local a, b = shown[1], shown[2]
+                fill.Position = UDim2.fromScale(a, 0)
+                fill.Size = UDim2.fromScale(b - a, 1)
+                highKnob.Position = UDim2.new(b, 0, 0.5, 0)
+                if lowKnob then lowKnob.Position = UDim2.new(a, 0, 0.5, 0) end
+                fillGlow.Target = b - a > 0.001 and 1 or 0
+            end
+            local function glide(immediate)
+                if immediate then
+                    shown[1], shown[2] = goal[1], goal[2]
+                    paint()
+                    return
+                end
+                if animator then return end
+                animator = game:GetService("RunService").RenderStepped:Connect(function(dt)
+                    local dragging = activeSlider and activeSlider.Control == control
+                    local alpha = 1 - math.exp(-(dragging and 28 or 16) * math.min(dt, 0.1))
+                    local settled = true
+                    for index = 1, 2 do
+                        shown[index] = shown[index] + (goal[index] - shown[index]) * alpha
+                        if math.abs(goal[index] - shown[index]) < 0.0005 then
+                            shown[index] = goal[index]
+                        else
+                            settled = false
+                        end
+                    end
+                    paint()
+                    if settled and not dragging then
+                        animator:Disconnect()
+                        animator = nil
+                    end
+                end)
+            end
+            container.Destroying:Connect(function()
+                if animator then animator:Disconnect() end
+                animator = nil
+            end)
             local function quantize(value)
                 assert(
                     type(value) == "number" and value == value and math.abs(value) < math.huge,
@@ -2925,13 +2993,10 @@ function Library:CreateWindow(config)
                     low, high = minimum, quantize(value)
                     self.Value = high
                 end
-                local a, b = (low - minimum) / (maximum - minimum), (high - minimum) / (maximum - minimum)
-                local duration = activeSlider and activeSlider.Control == self and 0.065 or 0.2
-                motion(fill, { Position = UDim2.fromScale(a, 0), Size = UDim2.fromScale(b - a, 1) }, duration, silent)
-                fillGlow.Target = b - a > 0.001 and 1 or 0
-                motion(highKnob, { Position = UDim2.new(b, 0, 0.5, 0) }, duration, silent)
+                goal[1] = (low - minimum) / (maximum - minimum)
+                goal[2] = (high - minimum) / (maximum - minimum)
+                glide(silent)
                 if isRange then
-                    motion(lowKnob, { Position = UDim2.new(a, 0, 0.5, 0) }, duration, silent)
                     first.Text, second.Text = display(low), display(high)
                 else
                     first.Text = display(high)
@@ -2942,25 +3007,18 @@ function Library:CreateWindow(config)
             end
             control.SetValue = control.Set
             local selectedHandle = "High"
-            local sliderHovered = false
+            -- Only a pressed thumb grows; hovering the track leaves it alone.
             local function sliderFeedback()
                 for name, knob in pairs({ Low = lowKnob, High = highKnob }) do
                     local pressed = activeSlider and activeSlider.Control == control and selectedHandle == name
-                    motion(knob.UIScale, { Scale = pressed and 1.18 or (sliderHovered and 1.08 or 1) }, 0.12)
+                    motion(knob.UIScale, { Scale = pressed and 1.15 or 1 }, 0.14)
                 end
             end
-            hit.MouseEnter:Connect(function()
-                sliderHovered = true
-                sliderFeedback()
-            end)
-            hit.MouseLeave:Connect(function()
-                sliderHovered = false
-                sliderFeedback()
-            end)
+            local function fractionAt(position)
+                return math.clamp((position.X - hit.AbsolutePosition.X) / math.max(1, hit.AbsoluteSize.X), 0, 1)
+            end
             local function valueAt(position)
-                return minimum
-                    + math.clamp((position.X - hit.AbsolutePosition.X) / math.max(1, hit.AbsoluteSize.X), 0, 1)
-                        * (maximum - minimum)
+                return minimum + fractionAt(position) * (maximum - minimum)
             end
             local function update(position)
                 local value = quantize(valueAt(position))
@@ -2973,6 +3031,14 @@ function Library:CreateWindow(config)
                 else
                     control:Set(value)
                 end
+                -- While dragging, the thumb follows the pointer itself; it settles on the step when released.
+                local fraction = fractionAt(position)
+                if isRange and selectedHandle == "Low" then
+                    goal[1] = math.min(fraction, goal[2])
+                else
+                    goal[2] = math.max(fraction, isRange and goal[1] or 0)
+                end
+                glide()
             end
             hit.InputBegan:Connect(function(input)
                 if not canInteract(container) then return end
@@ -2997,6 +3063,12 @@ function Library:CreateWindow(config)
                         Control = control,
                         Release = function()
                             sliderFeedback()
+                            -- Ease from where the pointer left the thumb onto the committed step.
+                            local low = isRange and control.Low or minimum
+                            local high = isRange and control.High or control.Value
+                            goal[1] = (low - minimum) / (maximum - minimum)
+                            goal[2] = (high - minimum) / (maximum - minimum)
+                            glide()
                             if options.OnDragEnd then options.OnDragEnd() end
                         end,
                     }
@@ -3165,6 +3237,13 @@ function Library:CreateWindow(config)
             animateButton(button, "Search")
             local menu = rounded("CanvasGroup", "DropdownMenu", dropdownOverlay, 0, 0, 240, 100, "Card", 9)
             menu.ZIndex = 2
+            -- Lightly see-through so the menu reads as a layer over the window.
+            menu.BackgroundTransparency = 0.12
+            -- Swallows presses and hover on the menu's padding so they never reach the rows underneath.
+            local menuBlocker = rounded("TextButton", "InputBlocker", menu, 0, 0, 0, 0, "Card", 9)
+            menuBlocker.Size = UDim2.fromScale(1, 1)
+            menuBlocker.BackgroundTransparency = 1
+            menuBlocker.ZIndex = 0
             menu.Visible = false
             local menuScale = Instance.new("UIScale")
             menuScale.Parent = menu
@@ -4121,10 +4200,6 @@ function Library:CreateWindow(config)
         tab.Title.TextTruncate = Enum.TextTruncate.AtEnd
         setUIFont(tab.Title, true)
         bindTheme(tab.Title, "TextColor3", "Muted")
-        -- Strip tabs are sized to their label, which is only measured once the font has loaded.
-        tab.Title:GetPropertyChangedSignal("TextBounds"):Connect(function()
-            if dockEdge == "Top" then refreshDockLayout() end
-        end)
         local page = newUI("CanvasGroup")
         page.Name = tab.Name
         page.Size = UDim2.fromScale(1, 1)
@@ -4716,16 +4791,16 @@ function Library:CreateWindow(config)
                 if dockEdge == "Top" then
                     -- Strip: a bare search glyph at the end of the bar; the card drops just below the bar.
                     dockSearch.AnchorPoint = Vector2.new(1, 0.5)
-                    dockSearch.Position = UDim2.new(1, -7, 0.5, 0)
-                    dockSearch.Size = UDim2.fromOffset(34, 34)
+                    dockSearch.Position = UDim2.new(1, -6, 0.5, 0)
+                    dockSearch.Size = UDim2.fromOffset(36, 36)
                     dockSearch.BackgroundTransparency = (hovering or box:IsFocused()) and 0.4 or 1
-                    glyph.Position = UDim2.fromOffset(9, 9)
+                    glyph.Position = UDim2.fromOffset(10, 10)
                     -- The card floats above the window, centred over the tab strip and as wide as it, so it
                     -- never covers the page.
                     local stripWidth = sidebar.Size.X.Offset
                     card.Size = UDim2.fromOffset(math.max(236, stripWidth), 48)
                     card.AnchorPoint = Vector2.new(0.5, 1)
-                    local centre = 7 - stripWidth / 2
+                    local centre = 6 - stripWidth / 2
                     rest, away = UDim2.new(1, centre, 0, -24), UDim2.new(1, centre, 0, -16)
                 else
                     dockSearch.AnchorPoint = Vector2.new(0.5, 0)
@@ -4943,24 +5018,16 @@ function Library:CreateWindow(config)
         renderDock()
     end
     refreshDockLayout = function()
-        -- A top bar is a slim strip: labelled tabs (icon + name), the active one in a soft pill, and a
-        -- search button at the end. The other edges keep the icon dock with the profile.
+        -- A top bar is a slim icon strip in the window header (the active tab in a soft pill) with a search
+        -- button at the end. The other edges keep the floating icon dock with the profile.
         local strip = dockEdge == "Top"
         local tabSpan = 0
         for _, tab in ipairs(tabs) do
-            tab.Title.Visible = strip
+            tab.Title.Visible = false
             if strip then
-                tab.Title.TextSize = 13
-                local textWidth = tab.Title.TextBounds.X
-                if textWidth <= 0 then
-                    textWidth = game:GetService("TextService")
-                        :GetTextSize(tab.Name, 13, Enum.Font.BuilderSansMedium, Vector2.new(1000, 20)).X
-                end
-                tab.Button.Size = UDim2.fromOffset(math.ceil(textWidth) + 50, 34)
-                tab.Icon.Position = UDim2.fromOffset(14, 9)
-                tab.Icon.Size = UDim2.fromOffset(16, 16)
-                tab.Title.Position = UDim2.fromOffset(38, 0)
-                tab.Title.Size = UDim2.new(1, -40, 1, 0)
+                tab.Button.Size = UDim2.fromOffset(36, 36)
+                tab.Icon.Position = UDim2.fromOffset(9, 9)
+                tab.Icon.Size = UDim2.fromOffset(18, 18)
             else
                 tab.Button.Size = UDim2.fromOffset(44, 44)
                 tab.Icon.Position = UDim2.fromOffset(11, 11)
@@ -4972,7 +5039,7 @@ function Library:CreateWindow(config)
         -- The bar is laid out along its edge: search, tabs, then a divider and the profile at the far end.
         local vertical = dockVertical()
         local thickness = strip and 48 or 64
-        local searchSpan = searchStyle ~= "Bar" and 0 or (vertical or strip) and (strip and 40 or 58) or 164
+        local searchSpan = searchStyle ~= "Bar" and 0 or (vertical or strip) and (strip and 42 or 58) or 164
         local available = vertical and viewport.AbsoluteSize.Y or viewport.AbsoluteSize.X
         local length = strip and (16 + tabSpan + searchSpan)
             or math.min(76 + searchSpan + #tabs * 52, math.max(128 + searchSpan, available - 24))
@@ -5004,8 +5071,8 @@ function Library:CreateWindow(config)
         dockSearch.Visible = searchStyle == "Bar"
         layoutDockSearch()
         if strip then
-            navigationGroup.Position = UDim2.fromOffset(8, 7)
-            navigationGroup.Size = UDim2.new(1, -16 - searchSpan, 0, 34)
+            navigationGroup.Position = UDim2.fromOffset(8, 6)
+            navigationGroup.Size = UDim2.new(1, -16 - searchSpan, 0, 36)
         elseif vertical then
             navigationGroup.Position = UDim2.fromOffset(6, 8 + searchSpan)
             navigationGroup.Size = UDim2.new(0, 52, 1, -72 - searchSpan)
