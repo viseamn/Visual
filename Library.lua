@@ -79,6 +79,25 @@ local layoutEdges = { ["Bottom bar"] = "Bottom", ["Top bar"] = "Top", ["Left bar
 local layoutStyles = { "Bottom bar", "Top bar", "Left bar", "Right bar" }
 local dpiScales = { "50%", "75%", "100%", "125%", "150%", "175%", "200%" }
 
+-- Look up names without indexing an Enum with an unknown member (which throws).
+local keyCodes = {}
+for _, key in ipairs(Enum.KeyCode:GetEnumItems()) do keyCodes[key.Name] = key end
+local function resolveKeyCode(value)
+    if type(value) == "string" then return keyCodes[value] end
+    if typeof(value) == "EnumItem" and value.EnumType == Enum.KeyCode then return value end
+    return nil
+end
+
+-- Keep failures isolated only at callback boundaries where cleanup must continue.
+local function warnOnError(callback, ...)
+    local ok, err = pcall(callback, ...)
+    if not ok then warn(err) end
+end
+
+local function playerThumbnail(players, userId)
+    return pcall(players.GetUserThumbnailAsync, players, userId, Enum.ThumbnailType.HeadShot, Enum.ThumbnailSize.Size100x100)
+end
+
 -- Obsidian-compatible feature adapters. See THIRD_PARTY_NOTICES.md.
 local function featureSignal()
     local listeners = {}
@@ -98,8 +117,7 @@ local function featureSignal()
         for connection, callback in pairs(listeners) do pending[#pending + 1] = { connection, callback } end
         for _, entry in ipairs(pending) do
             if entry[1].Connected then
-                local ok, err = pcall(entry[2], ...)
-                if not ok then warn(err) end
+                warnOnError(entry[2], ...)
             end
         end
     end
@@ -246,8 +264,7 @@ function Library:CreateWindow(config)
         )
     end
     if config.MenuKey then
-        local key = type(config.MenuKey) == "string" and Enum.KeyCode[config.MenuKey] or config.MenuKey
-        assert(typeof(key) == "EnumItem" and key.EnumType == Enum.KeyCode, "Invalid menu key")
+        assert(resolveKeyCode(config.MenuKey), "Invalid menu key")
     end
     if self.Window then self.Window:Destroy() end
     local Players = game:GetService("Players")
@@ -692,7 +709,9 @@ function Library:CreateWindow(config)
     local function finishSlider()
         local previous = activeSlider
         activeSlider = nil
-        if previous and previous.Release then previous.Release() end
+        if previous and previous.Release then
+            warnOnError(previous.Release)
+        end
     end
     local activeToggleDrag
     local function cancelToggleDrag()
@@ -1106,13 +1125,13 @@ function Library:CreateWindow(config)
 
     local refreshKeybindMenu = function() end
     local function canInteract(object)
-        if dialogOpen then return false end
+        if not uiAlive or dialogOpen then return false end
         if windowTransitioning and object and (object == root or object:IsDescendantOf(root)) then return false end
         while object and object ~= screen do
             if object:IsA("GuiObject") and (not object.Visible or object:GetAttribute("Disabled")) then return false end
             object = object.Parent
         end
-        return true
+        return object == screen and screen.Enabled
     end
     local modifierKeys = {
         Ctrl = { Enum.KeyCode.LeftControl, Enum.KeyCode.RightControl },
@@ -1126,11 +1145,16 @@ function Library:CreateWindow(config)
         end
         return result
     end
-    local function releaseHolds(silent)
+    local function releaseHolds(silent, destroying)
+        -- Callbacks may remove other controls; iterate a snapshot and keep releasing
+        -- even if one user callback fails during cleanup.
+        local pending = {}
         for control in pairs(keybindControls) do
+            pending[#pending + 1] = control
+        end
+        for _, control in ipairs(pending) do
             if control.Holding then
-                control.Holding = false
-                control:Set(false, silent)
+                warnOnError(control._ReleaseHold, control, silent, destroying)
             end
         end
     end
@@ -1242,14 +1266,17 @@ function Library:CreateWindow(config)
         cancelToggleDrag()
         releaseHolds()
     end))
-    screen.Destroying:Connect(function()
+    local function beginUIDestroy()
+        if not uiAlive then return end
         uiAlive = false
         capturingKeybind = nil
+        releaseHolds(false, true)
         keybindControls = {}
         while #toasts > 0 do
             toasts[1]:Dismiss(true)
         end
-    end)
+    end
+    screen.Destroying:Connect(beginUIDestroy)
     local content = Instance.new("Frame")
     content.Name = "Pages"
     content.ZIndex = 2
@@ -2199,6 +2226,23 @@ function Library:CreateWindow(config)
         group:SetCollapsed(config.Collapsed == true, true)
         local insertionSection
         local inputAdapters = {}
+        local function createInSection(section, method, ...)
+            local previous = insertionSection
+            insertionSection = section
+            local ok, control = pcall(group[method], group, ...)
+            insertionSection = previous
+            if not ok then error(control, 2) end
+            return control
+        end
+        local function controlSaveId(options, kind)
+            return options.SaveId or (tab.Name .. "/" .. group.Name .. "/"
+                .. (insertionSection and (insertionSection.Name .. "/") or "")
+                .. (options.Name or kind))
+        end
+        local function trackControl(owner, connection)
+            owner.Destroying:Connect(function() connection:Disconnect() end)
+            return connection
+        end
         local function row(name, height)
             local object = newUI("CanvasGroup")
             object.Name = name
@@ -2216,15 +2260,7 @@ function Library:CreateWindow(config)
         end
         local function persist(options, kind, owner, read, write, validate, changed)
             if options.NoSave then return end
-            local id = options.SaveId
-                or (
-                    tab.Name
-                    .. "/"
-                    .. group.Name
-                    .. "/"
-                    .. (insertionSection and (insertionSection.Name .. "/") or "")
-                    .. (options.Name or kind)
-                )
+            local id = controlSaveId(options, kind)
             registerControl(id, kind, owner, read, write, validate, changed)
         end
         local function persistColor(options, picker, owner)
@@ -2290,8 +2326,7 @@ function Library:CreateWindow(config)
                 self:RefreshKeybind()
             end
             function control:SetKeybind(key)
-                if type(key) == "string" then key = Enum.KeyCode[key] end
-                assert(typeof(key) == "EnumItem" and key.EnumType == Enum.KeyCode, "Invalid keybind")
+                key = assert(resolveKeyCode(key), "Invalid keybind")
                 self.Keybind = key
                 for name, keys in pairs(modifierKeys) do
                     if table.find(keys, key) then self.Modifiers[name] = nil end
@@ -2324,8 +2359,7 @@ function Library:CreateWindow(config)
                 end,
                 function(value)
                     if type(value) ~= "table" or type(value.Keybind) ~= "string" then return false end
-                    local ok, key = pcall(function() return Enum.KeyCode[value.Keybind] end)
-                    if not ok or not key then return false end
+                    if not keyCodes[value.Keybind] then return false end
                     if value.Modifiers ~= nil then
                         if type(value.Modifiers) ~= "table" then return false end
                         for name, enabled in pairs(value.Modifiers) do
@@ -2420,9 +2454,9 @@ function Library:CreateWindow(config)
             elementGlow(swatch, { Spread = 7, Radius = 4, Strength = 0.5 })
             local picker = createColorPicker(container, swatch, options)
             persistColor(options, picker, container)
-            tab.Columns[side]:GetPropertyChangedSignal("CanvasPosition"):Connect(function()
+            trackControl(container, tab.Columns[side]:GetPropertyChangedSignal("CanvasPosition"):Connect(function()
                 if openDropdown == picker then closeDropdown(true) end
-            end)
+            end))
             return picker
         end
         function group:AddToggle(options)
@@ -2607,6 +2641,13 @@ function Library:CreateWindow(config)
             end
             function control:AddColorPicker(colorOptions)
                 if self.ColorPicker then return self.ColorPicker end
+                colorOptions = table.clone(colorOptions or {})
+                colorOptions.Name = colorOptions.Name or ((options.Name or "Toggle") .. " color")
+                colorOptions.NoSave = colorOptions.NoSave or options.NoSave
+                if not colorOptions.NoSave then
+                    local id = controlSaveId(colorOptions, "ColorPicker")
+                    assert(not controlRegistry[id], "Duplicate SaveId: " .. id)
+                end
                 local swatch = rounded("TextButton", "ColorSwatch", container, 0, 5, 18, 18, "Accent", 4)
                 swatch.Position = UDim2.new(1, -60, 0, 5)
                 local stroke = Instance.new("UIStroke")
@@ -2614,29 +2655,22 @@ function Library:CreateWindow(config)
                 bindTheme(stroke, "Color", "Muted")
                 stroke.Parent = swatch
                 elementGlow(swatch, { Spread = 7, Radius = 4, Strength = 0.5 })
-                colorOptions = colorOptions or {}
-                colorOptions.Name = colorOptions.Name or ((options.Name or "Toggle") .. " color")
-                colorOptions.NoSave = colorOptions.NoSave or options.NoSave
                 self.ColorPicker = createColorPicker(container, swatch, colorOptions)
                 persistColor(colorOptions, self.ColorPicker, container)
                 self.ColorSpace = 26 -- swatch (18) + 8px gap
                 self:RefreshKeybind()
-                tab.Columns[side]:GetPropertyChangedSignal("CanvasPosition"):Connect(function()
+                trackControl(container, tab.Columns[side]:GetPropertyChangedSignal("CanvasPosition"):Connect(function()
                     if openDropdown == self.ColorPicker then closeDropdown(true) end
-                end)
+                end))
                 return self.ColorPicker
             end
             function control:SetKeybind(key)
+                key = assert(resolveKeyCode(key or Enum.KeyCode.Unknown), "Invalid keybind")
                 if self.Holding then
                     self.Holding = false
                     self:Set(false)
                 end
-                if type(key) == "string" then
-                    local success, result = pcall(function() return Enum.KeyCode[key] end)
-                    assert(success and result, "Unknown keybind: " .. key)
-                    key = result
-                end
-                self.Keybind = key or Enum.KeyCode.Unknown
+                self.Keybind = key
                 for name, keys in pairs(modifierKeys) do
                     if table.find(keys, self.Keybind) then self.Modifiers[name] = nil end
                 end
@@ -2680,6 +2714,7 @@ function Library:CreateWindow(config)
                 }, 0.18)
             end
             function control:Set(value, silent)
+                if self.Destroyed or not uiAlive then return end
                 if self.KeybindMode == "Always" then value = true end
                 local previousValue = self.Value
                 self.Value = value == true
@@ -2701,13 +2736,25 @@ function Library:CreateWindow(config)
                     end)
                 end
                 if not silent and options.Callback then options.Callback(self.Value) end
-                refreshKeybindMenu()
+                if self.Destroyed or not uiAlive then return end
+                if previousValue ~= self.Value then refreshKeybindMenu() end
                 if not silent and not loadingConfig and self.Notify and previousValue ~= self.Value then
                     notify({
                         Title = options.Name or "Toggle",
                         Content = self.Value and "Enabled" or "Disabled",
                         Icon = self.Value and "check" or "bell-off",
                     })
+                end
+            end
+            function control:_ReleaseHold(silent, destroying)
+                if not self.Holding then return end
+                self.Holding = false
+                if destroying then
+                    -- Teardown must notify the consumer without starting more UI animations.
+                    self.Value = false
+                    if not silent and options.Callback then options.Callback(false) end
+                else
+                    self:Set(false, silent)
                 end
             end
             bell.Activated:Connect(function()
@@ -2733,9 +2780,9 @@ function Library:CreateWindow(config)
                     control:RefreshKeybind()
                 end
             end)
-            tab.Columns[side]:GetPropertyChangedSignal("CanvasPosition"):Connect(function()
+            trackControl(container, tab.Columns[side]:GetPropertyChangedSignal("CanvasPosition"):Connect(function()
                 if openDropdown == bindPopup then closeDropdown(true) end
-            end)
+            end))
             local completedDragInput
             button.InputBegan:Connect(function(input)
                 if not canInteract(container) or control.KeybindMode == "Always" then return end
@@ -2784,11 +2831,13 @@ function Library:CreateWindow(config)
                 if canInteract(container) and control.KeybindMode ~= "Always" then control:Set(not control.Value) end
             end)
             container.Destroying:Connect(function()
+                control.Destroyed = true
+                warnOnError(control._ReleaseHold, control, false, true)
                 if activeToggleDrag and activeToggleDrag.Control == control then activeToggleDrag = nil end
                 if openDropdown == bindPopup then closeDropdown(true) end
                 bindMenu:Destroy()
                 keybindControls[control] = nil
-                refreshKeybindMenu()
+                refreshKeybindMenu(control)
                 if capturingKeybind == control then capturingKeybind = nil end
             end)
             keybindControls[control] = true
@@ -2835,7 +2884,7 @@ function Library:CreateWindow(config)
                             if not modifierKeys[name] or type(enabled) ~= "boolean" then return false end
                         end
                     end
-                    return pcall(function() assert(Enum.KeyCode[value.Keybind]) end)
+                    return keyCodes[value.Keybind] ~= nil
                 end,
                 function()
                     if options.Callback then options.Callback(control.Value) end
@@ -2921,6 +2970,7 @@ function Library:CreateWindow(config)
             -- The fill and thumbs glide toward a goal (as track fractions) every frame instead of restarting a
             -- tween on each mouse move, so dragging stays smooth even with coarse steps.
             local shown, goal, animator = { 0, 0 }, { 0, 0 }, nil
+            local sliderAlive = true
             local function paint()
                 local a, b = shown[1], shown[2]
                 fill.Position = UDim2.fromScale(a, 0)
@@ -2930,6 +2980,7 @@ function Library:CreateWindow(config)
                 fillGlow.Target = b - a > 0.001 and 1 or 0
             end
             local function glide(immediate)
+                if not sliderAlive or not uiAlive or not container.Parent then return end
                 if immediate then
                     shown[1], shown[2] = goal[1], goal[2]
                     paint()
@@ -2937,6 +2988,11 @@ function Library:CreateWindow(config)
                 end
                 if animator then return end
                 animator = game:GetService("RunService").RenderStepped:Connect(function(dt)
+                    if not sliderAlive or not uiAlive or not container.Parent then
+                        animator:Disconnect()
+                        animator = nil
+                        return
+                    end
                     local dragging = activeSlider and activeSlider.Control == control
                     local alpha = 1 - math.exp(-(dragging and 28 or 16) * math.min(dt, 0.1))
                     local settled = true
@@ -2956,6 +3012,8 @@ function Library:CreateWindow(config)
                 end)
             end
             container.Destroying:Connect(function()
+                sliderAlive = false
+                if activeSlider and activeSlider.Control == control then activeSlider = nil end
                 if animator then animator:Disconnect() end
                 animator = nil
             end)
@@ -2970,6 +3028,7 @@ function Library:CreateWindow(config)
             end
             local function display(value) return string.format("%.4g", value) .. (options.Suffix or "") end
             function control:Set(value, silent)
+                if not sliderAlive or not uiAlive then return end
                 local low, high
                 if isRange then
                     assert(type(value) == "table", "Range slider expects {low, high}")
@@ -3011,6 +3070,11 @@ function Library:CreateWindow(config)
                 return minimum + fractionAt(position) * (maximum - minimum)
             end
             local function update(position)
+                if not sliderAlive or not canInteract(container) then
+                    if activeSlider and activeSlider.Control == control then finishSlider() end
+                    return
+                end
+                local gesture = activeSlider
                 local value = quantize(valueAt(position))
                 if isRange then
                     if selectedHandle == "Low" then
@@ -3021,6 +3085,8 @@ function Library:CreateWindow(config)
                 else
                     control:Set(value)
                 end
+                -- A callback can destroy the slider, open a dialog, or end this gesture.
+                if not sliderAlive or not canInteract(container) or activeSlider ~= gesture then return end
                 -- While dragging, the thumb follows the pointer itself; it settles on the step when released.
                 local fraction = fractionAt(position)
                 if isRange and selectedHandle == "Low" then
@@ -3052,6 +3118,7 @@ function Library:CreateWindow(config)
                         Update = update,
                         Control = control,
                         Release = function()
+                            if not sliderAlive or not uiAlive then return end
                             sliderFeedback()
                             -- Ease from where the pointer left the thumb onto the committed step.
                             local low = isRange and control.Low or minimum
@@ -3508,15 +3575,7 @@ function Library:CreateWindow(config)
                             entry.Image.Image = thumbnailCache[target.UserId]
                         else
                             task.spawn(function()
-                                local ok, thumbnail = pcall(
-                                    function()
-                                        return Players:GetUserThumbnailAsync(
-                                            target.UserId,
-                                            Enum.ThumbnailType.HeadShot,
-                                            Enum.ThumbnailSize.Size100x100
-                                        )
-                                    end
-                                )
+                                local ok, thumbnail = playerThumbnail(Players, target.UserId)
                                 if ok then
                                     thumbnailCache[target.UserId] = thumbnail
                                     if uiAlive and entry.Image.Parent and not images[entry.Value] then
@@ -3797,7 +3856,7 @@ function Library:CreateWindow(config)
                     options = table.clone(options)
                     local callback = options.Callback
                     options.Callback = function(...)
-                        stateChanged:Fire()
+                        if uiAlive then stateChanged:Fire() end
                         changed:Fire(...)
                         if callback then callback(...) end
                     end
@@ -3975,11 +4034,7 @@ function Library:CreateWindow(config)
                 "AddDependencyBox",
             }) do
                 section[method] = function(_, options, info)
-                    insertionSection = section
-                    local ok, result = pcall(group[method], group, options, info)
-                    insertionSection = nil
-                    if not ok then error(result, 2) end
-                    return result
+                    return createInSection(section, method, options, info)
                 end
             end
             button.Activated:Connect(function() section:Activate() end)
@@ -4022,7 +4077,30 @@ function Library:CreateWindow(config)
                         )
                     end
                 end
-                local control = create(self, options)
+                -- Use the same ID calculation as persistence, before allocating a row.
+                local config = type(options) == "table" and options or {}
+                local kind = method:sub(4)
+                if kind == "Slider" and config.Range == true then kind = "RangeSlider" end
+                if kind == "Dropdown" and config.Multi == true then kind = "MultiDropdown" end
+                if not config.NoSave and (kind == "Keybind" or kind == "Toggle" or kind == "Checkbox"
+                    or kind == "Slider" or kind == "RangeSlider" or kind == "Textbox"
+                    or kind == "Dropdown" or kind == "MultiDropdown" or kind == "ColorPicker") then
+                    local saveId = controlSaveId(config, kind)
+                    assert(not controlRegistry[saveId], "Duplicate SaveId: " .. saveId)
+                end
+                local firstNewRow = #group.Elements + 1
+                local ok, control = pcall(create, self, options)
+                if not ok then
+                    -- Constructors may fail validation after allocating their UI.
+                    -- Remove only rows created by this call, including nested range sliders.
+                    for index = #group.Elements, firstNewRow, -1 do
+                        local element = group.Elements[index]
+                        element:Destroy()
+                        if group.Elements[index] == element then table.remove(group.Elements, index) end
+                        group.RowSections[element], group.RowControls[element] = nil, nil
+                    end
+                    error(control, 2)
+                end
                 if type(control) == "table" and control.Set then control.SetValue = control.Set end
                 if type(options) == "table" and options.SaveId then
                     Options[options.SaveId] = control
@@ -4096,11 +4174,7 @@ function Library:CreateWindow(config)
                 "AddTextbox", "AddColorPicker", "AddKeybind", "AddButton", "AddLabel", "AddDivider" }) do
                 box[method] = function(_, ...)
                     assert(not box.Destroyed, "Dependency box is destroyed")
-                    local previous = insertionSection
-                    insertionSection = section
-                    local ok, control = pcall(group[method], group, ...)
-                    insertionSection = previous
-                    if not ok then error(control, 2) end
+                    local control = createInSection(section, method, ...)
                     local element = group.Elements[#group.Elements]
                     box.Rows[element] = true
                     element.Destroying:Connect(function() box.Rows[element] = nil end)
@@ -4325,12 +4399,25 @@ function Library:CreateWindow(config)
 
     local activeDialog
     local function showDialog(config)
+        if not uiAlive then return end
         config = config or {}
         if activeDialog then activeDialog:Close() end
+        -- Lock interaction before release callbacks run: they may try to start another gesture.
+        dialogOpen = true
         closeDropdown(true)
         cancelKeyCapture()
         cancelToggleDrag()
+        finishSlider()
+        finishColorDrag()
+        cancelWindowDrag()
+        cancelWindowResize()
         releaseHolds()
+        if not uiAlive then return end
+        local focused = UserInputService:GetFocusedTextBox()
+        if focused then focused:ReleaseFocus() end
+        if not uiAlive then return end
+        -- A release callback may have opened a newer dialog already.
+        if activeDialog then return activeDialog end
         dialogOpen = true
         local shade = rounded("TextButton", "DialogOverlay", viewport, 0, 0, 0, 0, Color3.new(0, 0, 0), 0)
         shade.Size = UDim2.fromScale(1, 1)
@@ -4633,62 +4720,105 @@ function Library:CreateWindow(config)
     keybindLayout.SortOrder = Enum.SortOrder.LayoutOrder
     keybindLayout.Parent = keybindList
     keybindMenu.ShowToggleButtons = true
-    refreshKeybindMenu = function()
-        if not uiAlive or not keybindMenu.Frame.Parent then return end
-        for _, child in ipairs(keybindList:GetChildren()) do
-            if child:IsA("GuiObject") then child:Destroy() end
-        end
-        local controls = {}
-        for control in pairs(keybindControls) do
-            table.insert(controls, control)
-        end
-        table.sort(controls, function(a, b) return a.Name < b.Name end)
-        for index, control in ipairs(controls) do
-            local row = rounded("Frame", control.Name, keybindList, 0, 0, 0, 26, "Search", 5)
-            row.Size = UDim2.new(1, 0, 0, 26)
-            row.LayoutOrder = index
-            local name = label(row, control.Name, 12)
-            name.Position = UDim2.fromOffset(7, 0)
-            name.Size = UDim2.new(0.52, -7, 1, 0)
-            name.TextTruncate = Enum.TextTruncate.AtEnd
-            bindTheme(name, "TextColor3", control.Value and not control.Disabled and "Text" or "Muted")
-            local keys = {}
-            for _, modifier in ipairs({ "Ctrl", "Shift", "Alt" }) do
-                if control.Modifiers[modifier] then table.insert(keys, modifier) end
+    do
+        local keybindRows, keybindEmpty = {}, nil
+        local keybindDirty, keybindRefreshQueued = true, false
+        local function renderKeybindMenu()
+            if not uiAlive or not keybindMenu.Frame.Parent then return end
+            for control, entry in pairs(keybindRows) do
+                if not keybindControls[control] then
+                    entry.Row:Destroy()
+                    keybindRows[control] = nil
+                end
             end
-            table.insert(keys, control.Keybind == Enum.KeyCode.Unknown and "?" or control.Keybind.Name)
-            local shortcut = label(row, table.concat(keys, "+"), 11)
-            shortcut.Name = "Shortcut"
-            shortcut.Position = UDim2.new(0.52, 0, 0, 0)
-            shortcut.Size = UDim2.new(0.48, -32, 1, 0)
-            shortcut.TextXAlignment = Enum.TextXAlignment.Right
-            shortcut.TextTruncate = Enum.TextTruncate.AtEnd
-            bindTheme(shortcut, "TextColor3", "Muted")
-            local state =
-                rounded("TextButton", "State", row, 0, 4, 18, 18, control.Value and "Accent" or "Navigation", 4)
-            state.Position = UDim2.new(1, -23, 0, 4)
-            local check = icon(state, "check", 2, 2, 14, "OnAccent")
-            check.Visible = control.Value
-            state.Interactable = control.KeybindMode == "Toggle"
-                and not control.Disabled
-                and keybindMenu.ShowToggleButtons
-            state.Visible = control.KeybindMode ~= "Toggle" or keybindMenu.ShowToggleButtons
-            state.Activated:Connect(function()
-                if not dialogOpen and state.Interactable then control:Set(not control.Value) end
+            local controls = {}
+            for control in pairs(keybindControls) do
+                table.insert(controls, control)
+            end
+            table.sort(controls, function(a, b) return a.Name < b.Name end)
+            for index, control in ipairs(controls) do
+                local entry = keybindRows[control]
+                if not entry then
+                    local row = rounded("Frame", control.Name, keybindList, 0, 0, 0, 26, "Search", 5)
+                    row.Size = UDim2.new(1, 0, 0, 26)
+                    local name = label(row, control.Name, 12)
+                    name.Position = UDim2.fromOffset(7, 0)
+                    name.Size = UDim2.new(0.52, -7, 1, 0)
+                    name.TextTruncate = Enum.TextTruncate.AtEnd
+                    local shortcut = label(row, "", 11)
+                    shortcut.Name = "Shortcut"
+                    shortcut.Position = UDim2.new(0.52, 0, 0, 0)
+                    shortcut.Size = UDim2.new(0.48, -32, 1, 0)
+                    shortcut.TextXAlignment = Enum.TextXAlignment.Right
+                    shortcut.TextTruncate = Enum.TextTruncate.AtEnd
+                    bindTheme(shortcut, "TextColor3", "Muted")
+                    local state = rounded("TextButton", "State", row, 0, 4, 18, 18, "Navigation", 4)
+                    state.Position = UDim2.new(1, -23, 0, 4)
+                    local check = icon(state, "check", 2, 2, 14, "OnAccent")
+                    state.Activated:Connect(function()
+                        if uiAlive and not dialogOpen and not control.Destroyed and state.Interactable then
+                            control:Set(not control.Value)
+                        end
+                    end)
+                    entry = { Row = row, Name = name, Shortcut = shortcut, State = state, Check = check }
+                    keybindRows[control] = entry
+                end
+                entry.Row.LayoutOrder = index
+                entry.Row.Name = control.Name
+                local name, shortcut, state, check = entry.Name, entry.Shortcut, entry.State, entry.Check
+                name.Text = control.Name
+                bindTheme(name, "TextColor3", control.Value and not control.Disabled and "Text" or "Muted")
+                local keys = {}
+                for _, modifier in ipairs({ "Ctrl", "Shift", "Alt" }) do
+                    if control.Modifiers[modifier] then table.insert(keys, modifier) end
+                end
+                table.insert(keys, control.Keybind == Enum.KeyCode.Unknown and "?" or control.Keybind.Name)
+                shortcut.Text = table.concat(keys, "+")
+                bindTheme(state, "BackgroundColor3", control.Value and "Accent" or "Navigation")
+                check.Visible = control.Value
+                state.Interactable = control.KeybindMode == "Toggle"
+                    and not control.Disabled
+                    and keybindMenu.ShowToggleButtons
+                state.Visible = control.KeybindMode ~= "Toggle" or keybindMenu.ShowToggleButtons
+            end
+            if #controls == 0 then
+                if not keybindEmpty then
+                    keybindEmpty = label(keybindList, "No keybinds", 12)
+                    keybindEmpty.Size = UDim2.new(1, 0, 0, 26)
+                    bindTheme(keybindEmpty, "TextColor3", "Muted")
+                end
+            elseif keybindEmpty then
+                keybindEmpty:Destroy()
+                keybindEmpty = nil
+            end
+            keybindMenu.Frame.Size = UDim2.fromOffset(280, 40 + math.min(206, math.max(26, #controls * 30 - 4)))
+        end
+        refreshKeybindMenu = function(removedControl)
+            -- Remove dead rows even while hidden, so the cache does not retain destroyed controls.
+            local entry = removedControl and keybindRows[removedControl]
+            if entry and not keybindControls[removedControl] then
+                entry.Row:Destroy()
+                keybindRows[removedControl] = nil
+            end
+            keybindDirty = true
+            if not uiAlive or not keybindMenu.Frame.Parent or not keybindMenu.Frame.Visible or keybindRefreshQueued then return end
+            keybindRefreshQueued = true
+            task.defer(function()
+                keybindRefreshQueued = false
+                if not uiAlive or not keybindMenu.Frame.Parent or not keybindMenu.Frame.Visible or not keybindDirty then return end
+                keybindDirty = false
+                renderKeybindMenu()
             end)
         end
-        if #controls == 0 then
-            local empty = label(keybindList, "No keybinds", 12)
-            empty.Size = UDim2.new(1, 0, 0, 26)
-            bindTheme(empty, "TextColor3", "Muted")
+        keybindMenu.Frame:GetPropertyChangedSignal("Visible"):Connect(function()
+            if keybindMenu.Frame.Visible then refreshKeybindMenu() end
+        end)
+        function keybindMenu:SetShowToggleButtons(enabled)
+            self.ShowToggleButtons = enabled == true
+            refreshKeybindMenu()
         end
-        keybindMenu.Frame.Size = UDim2.fromOffset(280, 40 + math.min(206, math.max(26, #controls * 30 - 4)))
-    end
-    function keybindMenu:SetShowToggleButtons(enabled)
-        self.ShowToggleButtons = enabled == true
         refreshKeybindMenu()
     end
-    refreshKeybindMenu()
     local profile = rounded("ImageLabel", "Profile", sidebar, 0, 0, 40, 40, Color3.fromRGB(114, 105, 133), 20)
     profile.AnchorPoint = Vector2.new(1, 0.5)
     profile.Position = UDim2.new(1, -12, 0.5, 0)
@@ -4699,15 +4829,7 @@ function Library:CreateWindow(config)
     profileRim.Thickness = 1
     profileRim.Parent = profile
     task.spawn(function()
-        local ok, thumbnail = pcall(
-            function()
-                return Players:GetUserThumbnailAsync(
-                    player.UserId,
-                    Enum.ThumbnailType.HeadShot,
-                    Enum.ThumbnailSize.Size100x100
-                )
-            end
-        )
+        local ok, thumbnail = playerThumbnail(Players, player.UserId)
         if ok and profile.Parent then profile.Image = thumbnail end
     end)
     -- Taskbar-style search pill at the start of the bar, mirrored with the header search (only one of the
@@ -5532,9 +5654,7 @@ function Library:CreateWindow(config)
         end
     end
     function menuKeybind:SetKeybind(key)
-        if type(key) == "string" then key = Enum.KeyCode[key] end
-        assert(typeof(key) == "EnumItem" and key.EnumType == Enum.KeyCode, "Invalid menu key")
-        self.Keybind = key
+        self.Keybind = assert(resolveKeyCode(key), "Invalid menu key")
     end
     menuKeybind:SetKeybind(menuKeybind.Keybind)
     registerControl(
@@ -5548,8 +5668,7 @@ function Library:CreateWindow(config)
         end,
         function(value)
             if type(value) ~= "table" or type(value.Keybind) ~= "string" then return false end
-            local ok, key = pcall(function() return Enum.KeyCode[value.Keybind] end)
-            if not ok or not key then return false end
+            if not keyCodes[value.Keybind] then return false end
             if value.Modifiers ~= nil then
                 if type(value.Modifiers) ~= "table" then return false end
                 for name, enabled in pairs(value.Modifiers) do
@@ -5792,7 +5911,11 @@ function Library:CreateWindow(config)
         })
     end
     function window:Destroy()
-        if uiAlive then screen:Destroy() end
+        if uiAlive then
+            -- Invalidate synchronously even when Roblox defers Destroying signals.
+            beginUIDestroy()
+            screen:Destroy()
+        end
         table.clear(Options)
         table.clear(Toggles)
     end
