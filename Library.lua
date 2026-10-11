@@ -297,6 +297,9 @@ function Library:CreateWindow(config)
     local screen = Instance.new("ScreenGui")
     screen.Name = "Viz"
     screen.ResetOnSpawn = false
+    -- Full screen: no top-bar inset and no device safe-area padding.
+    screen.IgnoreGuiInset = true
+    screen.ScreenInsets = Enum.ScreenInsets.None
     screen.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
     screen.Parent = playerGui
 
@@ -514,9 +517,9 @@ function Library:CreateWindow(config)
     local refreshDockLayout = function() end
     local scale = Instance.new("UIScale")
     scale.Parent = root
-    -- The real screen in GUI-area coordinates. The ScreenGui keeps Roblox's safe insets, so its area starts
-    -- below the top bar; objects may still be drawn (and clicked) out to the true screen edge.
-    -- Returns the top-left (usually negative) and bottom-right corners.
+    -- The real screen in GUI-area coordinates. The ScreenGui ignores Roblox's insets, so this is normally the
+    -- area itself; kept in case an executor or parent re-applies an inset.
+    -- Returns the top-left (zero or negative) and bottom-right corners.
     local function screenBounds()
         local area = viewport.AbsoluteSize
         local camera = workspace.CurrentCamera
@@ -4851,6 +4854,13 @@ function Library:CreateWindow(config)
     track(viewport:GetPropertyChangedSignal("AbsoluteSize"):Connect(refreshDockLayout))
     local function updateDockHover(mouse, now)
         if not dockAutoHide then return end
+        -- Typing in the bar's search (pill or side card) keeps it out, wherever the pointer is.
+        local focused = UserInputService:GetFocusedTextBox()
+        if focused and focused:IsDescendantOf(dockHost) then
+            dockHoverUntil = now + 0.65
+            if not dockExpanded then showDock(true) end
+            return
+        end
         local size, vertical = viewport.AbsoluteSize, dockVertical()
         -- `along` runs parallel to the dock edge; `depth` is the distance in from that edge.
         local along = vertical and mouse.Y - size.Y / 2 or mouse.X - size.X / 2
