@@ -4366,6 +4366,7 @@ function Library:CreateWindow(config)
     ThemeManager.BuiltInThemes = {
         Default = {},
         Light = {
+            Accent = "22232E",
             Background = "F2F2F7",
             Card = "FFFFFF",
             Border = "D4D5DF",
