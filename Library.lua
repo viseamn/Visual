@@ -2380,8 +2380,10 @@ function Library:CreateWindow(config)
             text.Size = UDim2.new(1, -30, 1, 0)
             text.TextTruncate = Enum.TextTruncate.AtEnd
             local button = rounded("TextButton", "Checkbox", container, 0, 5, 18, 18, "Search", 4)
-            button.Position = UDim2.new(1, -18, 0, 5)
+            -- 1px in from the edge, like the keybind chip, so the border is not clipped by the row.
+            button.Position = UDim2.new(1, -19, 0, 5)
             local stroke = Instance.new("UIStroke")
+            stroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
             bindTheme(stroke, "Color", "Border")
             stroke.Parent = button
             local check = icon(button, "check", 2, 2, 14, "OnAccent")
@@ -2433,8 +2435,9 @@ function Library:CreateWindow(config)
             text.Size = UDim2.new(1, -36, 1, 0)
             text.TextTruncate = Enum.TextTruncate.AtEnd
             local swatch = rounded("TextButton", "ColorSwatch", container, 0, 5, 18, 18, "Accent", 4)
-            swatch.Position = UDim2.new(1, -18, 0, 5)
+            swatch.Position = UDim2.new(1, -19, 0, 5)
             local stroke = Instance.new("UIStroke")
+            stroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
             bindTheme(stroke, "Color", "Muted")
             stroke.Parent = swatch
             elementGlow(swatch, { Spread = 7, Radius = 4, Strength = 0.5 })
@@ -2630,6 +2633,7 @@ function Library:CreateWindow(config)
                 local swatch = rounded("TextButton", "ColorSwatch", container, 0, 5, 18, 18, "Accent", 4)
                 swatch.Position = UDim2.new(1, -60, 0, 5)
                 local stroke = Instance.new("UIStroke")
+                stroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
                 bindTheme(stroke, "Color", "Muted")
                 stroke.Parent = swatch
                 elementGlow(swatch, { Spread = 7, Radius = 4, Strength = 0.5 })
