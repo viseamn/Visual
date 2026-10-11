@@ -44,6 +44,12 @@ local function newManager()
             for role, value in pairs(data) do
                 full[role] = Color3.fromHex(value)
             end
+            -- A preset that keeps the default (white) accent on a light card would hide icons, checks and
+            -- swatches; fall back to the text color there.
+            if not data.Accent then
+                local function luminance(color) return 0.2126 * color.R + 0.7152 * color.G + 0.0722 * color.B end
+                if math.abs(luminance(full.Accent) - luminance(full.Card)) < 0.35 then full.Accent = full.Text end
+            end
             full.Selected = full.Background:Lerp(full.Accent, 0.18)
             full.Search = full.Card:Lerp(full.Background, 0.3)
             full.Navigation = full.Card:Lerp(full.Text, 0.08)
@@ -160,6 +166,7 @@ local function newManager()
             self.ColorControls[role] = colors:AddColorPicker({
                 Name = role,
                 Default = Theme[role],
+                Alpha = false, -- theme colors are always opaque
                 NoSave = true,
                 Callback = function(color) self:ApplyThemeData({ [role] = color }, true) end,
             })

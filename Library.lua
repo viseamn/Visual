@@ -1555,7 +1555,14 @@ function Library:CreateWindow(config)
         end
         function picker:Set(color, transparency, silent)
             assert(typeof(color) == "Color3", "Color picker expects Color3")
-            hue, saturation, brightness = color:ToHSV()
+            -- Writing back the color we already show must not move the thumbs: grey has no hue and black
+            -- has no saturation, so a round trip through HSV would snap them while dragging.
+            if color ~= self.Value then
+                local nextHue, nextSaturation, nextBrightness = color:ToHSV()
+                if nextSaturation > 0 and nextBrightness > 0 then hue = nextHue end
+                if nextBrightness > 0 then saturation = nextSaturation end
+                brightness = nextBrightness
+            end
             if transparency ~= nil then opacity = 1 - math.clamp(transparency, 0, 1) end
             if options.Alpha == false then opacity = 1 end
             refresh(not silent)
@@ -4490,7 +4497,9 @@ function Library:CreateWindow(config)
         refreshGlass()
         if self.ColorControls then
             for role, picker in pairs(self.ColorControls) do
-                picker:Set(Theme[role], 0, true)
+                -- The picker being dragged already shows this color; resetting it would fight the drag.
+                local dragging = activeColorDrag and activeColorDrag.Picker == picker
+                if not dragging then picker:Set(Theme[role], nil, true) end
             end
         end
         if self.FontControl then self.FontControl:Set(fontName, true) end
