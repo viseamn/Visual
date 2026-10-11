@@ -2465,9 +2465,13 @@ function Library:CreateWindow(config)
             local text = label(container, options.Name or "Toggle")
             text.Size = UDim2.new(1, -128, 1, 0)
             text.TextTruncate = Enum.TextTruncate.AtEnd
+            -- Like Obsidian, a toggle is just a label and a switch. The bell only appears when Notify is
+            -- passed, and the key chip only once a key picker is attached (Keybind = ... or :AddKeyPicker).
+            local showNotify = options.Notify ~= nil
             local bell = rounded("TextButton", "Notify", container, 0, 2, 24, 24, "Card", 6)
             bell.Position = UDim2.new(1, -120, 0, 2)
             bell.BackgroundTransparency = 1
+            bell.Visible = showNotify
             local bellIcon = icon(bell, "bell", 5, 5, 14)
             -- Same key chip as AddKeybind, so a toggle's key reads like every other keybind.
             local keyButton = rounded("TextButton", "Keybind", container, 0, 3, 24, 22, "Search", 6)
@@ -2532,7 +2536,8 @@ function Library:CreateWindow(config)
             local toggleRevision = 0
             local control = {
                 Value = false,
-                Notify = options.Notify ~= false,
+                Notify = options.Notify == true,
+                HasKeyPicker = options.Keybind ~= nil,
                 Keybind = Enum.KeyCode.Unknown,
                 ColorSpace = 0,
                 KeybindMode = "Toggle",
@@ -2622,18 +2627,27 @@ function Library:CreateWindow(config)
                 local iconOnly = not listening and self.Keybind == Enum.KeyCode.Unknown
                 local keyName = self.Keybind == Enum.KeyCode.Unknown and "-" or self.Keybind.Name
                 keyButton.Text = iconOnly and "" or (listening and "..." or shortKeyNames[keyName] or keyName)
-                -- Right to left with an even 8px gap: switch (34), color swatch, key chip, bell.
-                local textWidth = game:GetService("TextService")
-                    :GetTextSize(keyButton.Text, 11, Enum.Font.BuilderSansMedium, Vector2.new(200, 22)).X
-                local width = math.clamp(math.ceil(textWidth) + 14, 24, 72)
-                local chipRight = 42 + self.ColorSpace
-                keyButton.Size = UDim2.fromOffset(width, 22)
-                keyButton.Position = UDim2.new(1, -chipRight - width, 0, 3)
+                -- Right to left: switch (34), color swatch, then the key chip and bell when shown.
+                -- `edge` is the left edge of the last placed element, measured from the row's right side.
+                local edge, gap = 34 + self.ColorSpace, 8
+                keyButton.Visible = self.HasKeyPicker
+                if self.HasKeyPicker then
+                    local textWidth = game:GetService("TextService")
+                        :GetTextSize(keyButton.Text, 11, Enum.Font.BuilderSansMedium, Vector2.new(200, 22)).X
+                    local width = math.clamp(math.ceil(textWidth) + 14, 24, 72)
+                    edge = edge + gap + width
+                    gap = 4
+                    keyButton.Size = UDim2.fromOffset(width, 22)
+                    keyButton.Position = UDim2.new(1, -edge, 0, 3)
+                end
+                if showNotify then
+                    edge = edge + gap + 24
+                    bell.Position = UDim2.new(1, -edge, 0, 2)
+                end
                 keyButton.BackgroundTransparency = 0
                 keyBorder.Transparency = 0
                 keyboardIcon.Visible = iconOnly
-                bell.Position = UDim2.new(1, -chipRight - width - 4 - 24, 0, 2)
-                text.Size = UDim2.new(1, -chipRight - width - 4 - 24 - 8, 1, 0)
+                text.Size = UDim2.new(1, -edge - 8, 1, 0)
                 tween(keyButton, { TextColor3 = listening and "Accent" or "Text" }, 0.15)
                 tween(keyBorder, { Color = listening and "Accent" or "Border" }, 0.15)
                 refreshBindMenu()
@@ -2671,10 +2685,54 @@ function Library:CreateWindow(config)
                     self:Set(false)
                 end
                 self.Keybind = key
+                -- Binding a real key from script counts as attaching a key picker.
+                if key ~= Enum.KeyCode.Unknown then self.HasKeyPicker = true end
                 for name, keys in pairs(modifierKeys) do
                     if table.find(keys, self.Keybind) then self.Modifiers[name] = nil end
                 end
                 self:RefreshKeybind()
+            end
+            -- Obsidian-style: Toggles.X:AddKeyPicker("XKey", { Default = "F", Mode = "Hold", Text = "X" }).
+            -- The key always drives this toggle, the same as Obsidian's SyncToggleState = true.
+            function control:AddKeyPicker(id, pickerOptions)
+                if type(id) == "table" then id, pickerOptions = nil, id end
+                pickerOptions = pickerOptions or {}
+                if id then assert(not Options[id], "Duplicate control ID: " .. id) end
+                self.HasKeyPicker = true
+                self.NoUI = pickerOptions.NoUI == true
+                if pickerOptions.Text then self.Name = tostring(pickerOptions.Text) end
+                if pickerOptions.Mode then self:SetKeybindMode(pickerOptions.Mode, true) end
+                if pickerOptions.Default ~= nil and pickerOptions.Default ~= "None" then
+                    self:SetKeybind(pickerOptions.Default)
+                end
+                if pickerOptions.DefaultModifiers then self:SetModifiers(pickerOptions.DefaultModifiers) end
+                self:RefreshKeybind()
+                local picker = { Type = "KeyPicker", Toggle = self }
+                function picker:GetState() return control.Value end
+                -- { key, mode, modifiers }, as in Obsidian.
+                function picker:SetValue(value)
+                    if value[2] then control:SetKeybindMode(value[2]) end
+                    if value[3] then control:SetModifiers(value[3]) end
+                    control:SetKeybind(value[1] == "None" and Enum.KeyCode.Unknown or value[1])
+                end
+                function picker:SetText(value) control.Name = tostring(value); refreshKeybindMenu() end
+                function picker:SetMenuVisibility(visible) control.NoUI = visible == false; refreshKeybindMenu() end
+                setmetatable(picker, { __index = function(_, key)
+                    if key == "Value" then
+                        return control.Keybind == Enum.KeyCode.Unknown and "None" or control.Keybind.Name
+                    elseif key == "Mode" then
+                        return control.KeybindMode
+                    elseif key == "Modifiers" then
+                        return table.clone(control.Modifiers)
+                    end
+                end })
+                if id then
+                    Options[id] = picker
+                    container.Destroying:Connect(function()
+                        if Options[id] == picker then Options[id] = nil end
+                    end)
+                end
+                return picker
             end
             function control:SetModifiers(modifiers)
                 if self.Holding then
@@ -2863,8 +2921,9 @@ function Library:CreateWindow(config)
                     control:SetKeybindMode(value.Mode or "Toggle", true)
                     control:SetModifiers(value.Modifiers)
                     control:Set(value.Value, true)
-                    control:SetKeybind(value.Keybind)
-                    control:SetNotify(value.Notify)
+                    -- A config can't add buttons the script didn't ask for.
+                    control:SetKeybind(control.HasKeyPicker and value.Keybind or Enum.KeyCode.Unknown)
+                    control:SetNotify(showNotify and value.Notify)
                 end,
                 function(value)
                     if
@@ -4726,14 +4785,15 @@ function Library:CreateWindow(config)
         local function renderKeybindMenu()
             if not uiAlive or not keybindMenu.Frame.Parent then return end
             for control, entry in pairs(keybindRows) do
-                if not keybindControls[control] then
+                if not keybindControls[control] or not control.HasKeyPicker or control.NoUI then
                     entry.Row:Destroy()
                     keybindRows[control] = nil
                 end
             end
             local controls = {}
             for control in pairs(keybindControls) do
-                table.insert(controls, control)
+                -- Toggles without a key picker (or with NoUI) stay out of the keybind list.
+                if control.HasKeyPicker and not control.NoUI then table.insert(controls, control) end
             end
             table.sort(controls, function(a, b) return a.Name < b.Name end)
             for index, control in ipairs(controls) do

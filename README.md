@@ -129,8 +129,9 @@ Most controls accept `Callback`, `Tooltip`, `Disabled`, `Visible` and `NoSave`.
 
 - Click the switch or drag its thumb. A drag commits when you release.
 - Click the key box next to a toggle to open its popup. Pick **Toggle** or **Hold**, then click the box below and press a key. **Backspace** clears the key and **Escape** cancels.
-- In code: `Keybind = "F"`, `Mode = "Toggle"` / `"Hold"` / `"Always"`, `Modifiers = { Ctrl = true }`.
-- The bell icon turns the on/off notification for that toggle on or off.
+- A toggle has no key box until you give it one, like Obsidian: `Toggles.MyToggle:AddKeyPicker("MyKey", { Default = "F", Mode = "Hold", Text = "My toggle" })`. `NoUI = true` keeps it out of the keybind list. `Options.MyKey:SetValue({ "G", "Toggle" })` changes it.
+- The shorthand `Keybind = "F"` in the toggle's options also adds the key box. Other options: `Mode = "Toggle"` / `"Hold"` / `"Always"`, `Modifiers = { Ctrl = true }`.
+- `Notify = true` (or `false`) adds a bell icon that turns the on/off notification for that toggle on or off. Without it there is no bell and no notification.
 - `Toggles.MyToggle:AddColorPicker({ Default = ... })` adds a color swatch to the row.
 - `AddKeybind` is a key picker only. It does not run an action by itself.
 

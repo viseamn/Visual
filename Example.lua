@@ -27,12 +27,14 @@ local LeftGroupbox = Tabs.Main:AddLeftGroupbox("Groupbox", "boxes")
 LeftGroupbox:AddToggle("MyToggle", {
     Text = "This is a toggle",
     Default = true,
-    Keybind = "F", -- optional, press F to flip it
+    Notify = true, -- optional, adds the bell button
     Tooltip = "Hover text",
     Callback = function(value)
         print("MyToggle:", value)
     end,
 })
+-- Optional: adds the key box, press F to flip it. Toggles without one have no key box.
+Toggles.MyToggle:AddKeyPicker("MyToggleKey", { Default = "F", Mode = "Toggle", Text = "My toggle" })
 Toggles.MyToggle:AddColorPicker({ Default = Color3.fromRGB(255, 255, 255) })
 
 LeftGroupbox:AddCheckbox("MyCheckbox", {
