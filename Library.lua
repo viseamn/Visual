@@ -3046,6 +3046,7 @@ function Library:CreateWindow(config)
             list.AutomaticCanvasSize = Enum.AutomaticSize.Y
             list.ScrollingDirection = Enum.ScrollingDirection.Y
             list.ScrollBarThickness = 0
+            list.ScrollBarImageTransparency = 1
             list.Active = true
             list.Parent = menu
             local layout = Instance.new("UIListLayout")
@@ -5453,6 +5454,7 @@ function Library:CreateWindow(config)
             Options = table.clone(dpiScales),
             Default = math.floor(self:GetDPIScale() * 100 + 0.5) .. "%",
             Searchable = false,
+            MaxVisibleDropdownItems = #dpiScales,
             NoSave = true,
             -- Deferred: rescaling closes open dropdowns, including this one mid-callback.
             Callback = function(value)
