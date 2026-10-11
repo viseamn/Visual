@@ -1,161 +1,265 @@
-# Viz 1.0.3
+<p align="center">
+  <img src="assets/banner.jpg" alt="Viz" width="100%">
+</p>
 
-A Roblox client UI library with detachable groupboxes, search, keybinds, and a bottom navigation bar.
+<p align="center">
+  <b>A clean, glassy UI library for Roblox</b><br>
+  Dockable tab bar · detachable groupboxes · search · keybinds · themes · configs
+</p>
 
-The release has three runtime modules:
+<p align="center">
+  <img src="https://img.shields.io/badge/version-1.0.3-white?style=flat-square" alt="Version 1.0.3">
+  <img src="https://img.shields.io/badge/Roblox-Luau-22232E?style=flat-square" alt="Roblox Luau">
+  <img src="https://img.shields.io/badge/icons-Lucide-white?style=flat-square" alt="Lucide icons">
+</p>
+
+---
+
+## Features
+
+- **Dock bar** on any screen edge (bottom, top, left, right), with optional auto-hide and a built-in search pill
+- **Groupboxes** that collapse, split into sections, and detach into floating cards by dragging their header
+- **Every common control**: toggle, checkbox, button, slider, range slider, dropdown (single, multi, player, team), textbox, keybind, color picker, label, divider
+- **Toggle keybinds** with a popup to pick *Toggle* or *Hold* and press a key, including Ctrl / Shift / Alt
+- **Global search** that filters tabs, groupboxes and controls as you type
+- **Lucide icons** rendered from an icon font, so they stay sharp at any size
+- **Themes**: Default, Light, Black, Mint, Nord, Dracula, or your own, all applied live
+- **Configs**: save, load, autoload and JSON import/export
+- **DPI scale** from 50% to 200%, and the window always fits the screen
+
+## Files
 
 | File | Purpose |
 | --- | --- |
-| `Library.lua` | Windows, tabs, controls, input, animation, and live theme colors. |
-| `SaveManager.lua` | Config files, JSON import/export, ignored controls, and autoload. |
-| `ThemeManager.lua` | Theme presets, custom themes, theme files, and the theme settings panel. |
+| [`Library.lua`](Library.lua) | Window, tabs, controls, input, animation and theme colors |
+| [`ThemeManager.lua`](ThemeManager.lua) | Theme presets, custom themes and the theme settings panel |
+| [`SaveManager.lua`](SaveManager.lua) | Config files, JSON import/export, ignored controls and autoload |
+| [`Example.lua`](Example.lua) | Every element in one script. Start here |
 
-`Example.lua` shows the complete setup. Loading the modules does not create a window or load configs automatically.
+## Quick start
 
-## Setup
-
-**Roblox Studio:** create three ModuleScripts named `Library`, `SaveManager`, and `ThemeManager` beside a LocalScript containing `Example.lua`. The UI runs on the client.
-
-**Executor:** run `loadstring(game:HttpGet("https://raw.githubusercontent.com/viseamn/Visual/main/Example.lua"))()`. The example loads the three modules from the repository. For Studio, replace its three remote module loads with the `require` calls below.
+### Executor
 
 ```lua
-local Library = require(script.Parent.Library)
-local SaveManager = require(script.Parent.SaveManager)
-local ThemeManager = require(script.Parent.ThemeManager)
+loadstring(game:HttpGet("https://raw.githubusercontent.com/viseamn/Visual/main/Example.lua"))()
+```
 
-local Window = Library:CreateWindow({Title = "Viz", Layout = "Bottom bar"})
-local Main = Window:AddTab("Main", "house")
-local Group = Main:AddLeftGroupbox("Controls", "sliders-horizontal")
+### Your own script
 
-Group:AddToggle("Enabled", {Text = "Enabled", Default = true})
-Group:AddSlider("Speed", {Text = "Speed", Min = 0, Max = 100, Default = 50})
+```lua
+local repo = "https://raw.githubusercontent.com/viseamn/Visual/main/"
+local Library = loadstring(game:HttpGet(repo .. "Library.lua"))()
+local ThemeManager = loadstring(game:HttpGet(repo .. "ThemeManager.lua"))()
+local SaveManager = loadstring(game:HttpGet(repo .. "SaveManager.lua"))()
 
-local Settings = Window:CreateSettingsTab()
-SaveManager:SetLibrary(Library)
+local Window = Library:CreateWindow({
+    Title = "Viz",
+    Layout = "Bottom bar",
+    MenuKey = Enum.KeyCode.RightShift,
+})
+
+local Tabs = {
+    Main = Window:AddTab("Main", "house"),
+    Settings = Window:CreateSettingsTab(),
+}
+
+local Group = Tabs.Main:AddLeftGroupbox("Controls", "sliders-horizontal")
+Group:AddToggle("Enabled", { Text = "Enabled", Default = true, Keybind = "F" })
+Group:AddSlider("Speed", { Text = "Speed", Min = 0, Max = 100, Default = 50 })
+
 ThemeManager:SetLibrary(Library)
-SaveManager:SetFolder("Viz/My Game")
-ThemeManager:SetFolder("Viz/My Game")
-SaveManager:BuildConfigSection(Settings)
-ThemeManager:ApplyToTab(Settings)
+SaveManager:SetLibrary(Library)
+ThemeManager:SetFolder("Viz/MyGame")
+SaveManager:SetFolder("Viz/MyGame")
+SaveManager:BuildConfigSection(Tabs.Settings)
+ThemeManager:ApplyToTab(Tabs.Settings)
 
 ThemeManager:LoadDefault()
 SaveManager:LoadAutoloadConfig()
 ```
 
-## Controls
+### Roblox Studio
 
-Use a unique string ID for each saved control. Display text can change without changing its config ID.
+Create three ModuleScripts named `Library`, `ThemeManager` and `SaveManager` next to a LocalScript, then swap the `loadstring` lines for `require`:
 
 ```lua
-Group:AddCheckbox("Details", {Text = "Show details", Default = false})
-Group:AddDropdown("Mode", {Text = "Mode", Values = {"Default", "Compact"}, Default = "Default"})
-Group:AddDropdown("Items", {Text = "Items", Values = {"Names", "Health"}, Multi = true, Default = {"Names"}})
-Group:AddRangeSlider("Range", {Text = "Range", Min = 0, Max = 100, Default = {20, 80}})
-Group:AddColorPicker("Color", {Text = "Color", Default = Color3.fromRGB(199, 83, 224), Alpha = false})
-Group:AddInput("Name", {Text = "Name", Placeholder = "Enter a name"})
-Group:AddKeybind("ActionKey", {Text = "Action key", Default = Enum.KeyCode.F})
-Group:AddButton({Text = "Run", Callback = function() print("Run") end})
-Group:AddLabel("Status: ready")
-Group:AddDivider()
-
-Library.Options.Speed:SetValue(75)
-Library.Toggles.Enabled:SetValue(false)
-Library.Options.Name.Text = "Player"
+local Library = require(script.Parent.Library)
+local ThemeManager = require(script.Parent.ThemeManager)
+local SaveManager = require(script.Parent.SaveManager)
 ```
 
-`Name` is an alias for `Text`, and `SaveId` can be supplied in an options table instead of a separate ID. The table-only API remains available: `Group:AddSlider({Name = "Speed", SaveId = "Speed", Min = 0, Max = 100})`.
+The UI runs on the client only. Loading the modules does not create a window or load configs by itself.
 
-Toggle, checkbox, slider, dropdown, color picker, and keybind return control objects. Input, button, label, and divider return Roblox instances. Controls with `Set` also expose `SetValue`. The keybind editor exposes `SetKeybind` and `SetModifiers`; it does not dispatch an action by itself. A toggle can dispatch through `Keybind = "F"`, `Mode = "Toggle"` or `"Hold"`, and `Modifiers = {Ctrl = true}`.
+## Controls
 
-Toggle switches support clicking and horizontal dragging with a mouse or touch. Drag the thumb toward the right to enable or left to disable; the value commits on release. Canceling a drag leaves the current value unchanged. `Always` mode keeps the toggle enabled.
+Give each saved control a unique string ID. You can change the display text later without breaking saved configs.
 
-Controls accept `Callback`, `NoSave`, `Disabled`, and `Visible` where applicable. `Tooltip` appears after a short mouse hover and is also matched by search; `DisabledTooltip` supplies the disabled-state explanation. Use `control:SetDisabled(true)` / `SetVisible(false)` for control objects, or `Group:SetControlDisabled(instance, true)` / `SetControlVisible(instance, false)` for returned instances.
+```lua
+Group:AddToggle("MyToggle", { Text = "Toggle", Default = false, Keybind = "F", Mode = "Toggle" })
+Group:AddCheckbox("MyCheckbox", { Text = "Checkbox", Default = false })
+Group:AddButton({ Text = "Button", Callback = function() print("Pressed") end })
+Group:AddSlider("MySlider", { Text = "Slider", Min = 0, Max = 100, Default = 50, Suffix = "%" })
+Group:AddRangeSlider("MyRange", { Text = "Range", Min = 0, Max = 100, Default = { 20, 80 } })
+Group:AddInput("MyInput", { Text = "Textbox", Placeholder = "Type here" })
+Group:AddKeybind("MyKey", { Text = "Keybind", Default = Enum.KeyCode.G })
+Group:AddColorPicker("MyColor", { Text = "Color", Default = Color3.fromRGB(255, 255, 255) })
+Group:AddDropdown("MyDropdown", { Text = "Dropdown", Values = { "One", "Two" }, Default = "One" })
+Group:AddDropdown("MyMulti", { Text = "Multi", Values = { "A", "B", "C" }, Multi = true, Default = { "A" } })
+Group:AddDropdown("MyPlayer", { Text = "Player", SpecialType = "Player" })
+Group:AddLabel("Status: ready")
+Group:AddDivider()
+```
 
-### Control adapters and input validation
+Read and change values through `Library.Toggles` and `Library.Options`:
 
-Existing constructor return types are preserved. `Group:GetControl(control)` (also available on sections and dependency boxes) returns the control API for either a returned Instance or a control object. It exposes `Frame`, `SetText`, `SetDisabled`, `SetVisible`, `OnChanged` and `Destroy`. Destroy removes the entire control row. Value controls expose `SetValue`; input adapters expose the committed string through `Value`. `OnChanged` returns a connection with `Disconnect()`. Silent writes suppress change callbacks while still updating dependencies.
+```lua
+local Toggles, Options = Library.Toggles, Library.Options
+
+print(Toggles.MyToggle.Value)
+Options.MySlider:SetValue(75)
+Toggles.MyToggle:OnChanged(function(value) print("Toggle:", value) end)
+```
+
+Most controls accept `Callback`, `Tooltip`, `Disabled`, `Visible` and `NoSave`.
+
+<details>
+<summary><b>Toggles and keybinds</b></summary>
+
+<br>
+
+- Click the switch or drag its thumb. A drag commits when you release.
+- Click the key box next to a toggle to open its popup. Pick **Toggle** or **Hold**, then click the box below and press a key. **Backspace** clears the key and **Escape** cancels.
+- In code: `Keybind = "F"`, `Mode = "Toggle"` / `"Hold"` / `"Always"`, `Modifiers = { Ctrl = true }`.
+- The bell icon turns the on/off notification for that toggle on or off.
+- `Toggles.MyToggle:AddColorPicker({ Default = ... })` adds a color swatch to the row.
+- `AddKeybind` is a key picker only. It does not run an action by itself.
+
+</details>
+
+<details>
+<summary><b>Dropdowns</b></summary>
+
+<br>
+
+- `Values` can be a list or a `{ key = "Label" }` table. `Multi = true` allows several choices.
+- `Searchable = false` hides the search box, and `MaxVisibleDropdownItems` sets how many rows show before scrolling.
+- `SpecialType = "Player"` or `"Team"` keeps the list in sync with the server. Player rows show the player's avatar; turn that off with `EnablePlayerImages = false`.
+- `ValueImages = { key = "rbxassetid://..." }` puts an image on any row.
+- `DisabledValues`, `AllowNull`, `FormatDisplayValue` and `DragSelect` are also supported.
+
+</details>
+
+<details>
+<summary><b>Textbox validation</b></summary>
+
+<br>
 
 ```lua
 local Input = Group:AddInput("Count", {
     Text = "Count", Default = "10", Numeric = true, MaxLength = 3,
     AllowEmpty = false, EmptyReset = "10", Finished = true,
     VerifyValue = function(text) return tonumber(text) <= 100 end,
-    Tooltip = "Enter a number up to 100, then press Enter",
 })
-local Control = Group:GetControl(Input)
-Control:OnChanged(function(value) print(value) end)
-Control:SetValue("25")
+Group:GetControl(Input):OnChanged(function(value) print(value) end)
 ```
 
-Input validates both submitted edits and imported config values. Invalid edits restore the last committed value; invalid API/config values are rejected. `MaxLength` counts Unicode characters. `Finished = true` commits on Enter and discards edits on other blur events; `Finished = false` commits valid text while typing. Omitting `Finished` keeps commit-on-blur behavior. `ClearTextOnFocus` and `ClearTextOnBlur` are supported; clearing the display on blur preserves the committed value for saving. `AllowEmpty` defaults to true. An empty allowed string bypasses `Numeric` and `VerifyValue` checks.
+- `Finished = true` commits on Enter. `Finished = false` commits while typing. Leaving it out commits when the box loses focus.
+- An invalid edit goes back to the last valid value. `MaxLength` counts Unicode characters.
+- `ClearTextOnFocus` and `ClearTextOnBlur` are supported.
 
-### Dependency boxes
+</details>
+
+<details>
+<summary><b>Dependency boxes</b></summary>
+
+<br>
 
 ```lua
-local Enabled = Group:AddToggle("Advanced", {Text = "Advanced", Default = false})
 local Dep = Group:AddDependencyBox()
-Dep:AddSlider("AdvancedSpeed", {Text = "Speed", Min = 0, Max = 100, Default = 50})
-Dep:SetupDependencies({{Enabled, true}})
+Dep:AddSlider("Strength", { Text = "Strength", Min = 1, Max = 10, Default = 5 })
+Dep:SetupDependencies({ { Toggles.MyToggle, true } })
 ```
 
-Every `{control, expectedValue}` must match for the box's rows to appear. Scalar values use equality; multi dropdowns require the selected key. Disabled or destroyed sources hide the rows. A dependency can use a returned control object or an input adapter from `GetControl`. Same-group input Instances are resolved automatically. Sources from another group must be passed as adapters. Dependency visibility combines with user visibility and search; restoring config values updates dependencies even before callbacks run. Section dependency boxes retain section ownership. `SetupDependencies` replaces previous subscriptions; `Destroy` removes the box's rows and subscriptions. Nested dependency boxes and `AddDependencyGroupbox` are not implemented.
+The rows show only while every `{ control, value }` pair matches. For a multi dropdown, the key just needs to be selected.
 
-Groupboxes have `Detach`, `Attach`, `IsDetached`, `SetCollapsed`, and `ToggleCollapsed`. Drag the header to detach; release it inside the main window to attach again. `Group:AddTab("General")` creates a section supporting the same control constructors. `AddTextbox` aliases `AddInput`, and `AddDoubleSlider` aliases `AddRangeSlider`.
+</details>
+
+<details>
+<summary><b>Groupboxes and sections</b></summary>
+
+<br>
+
+- `Tab:AddLeftGroupbox(name, icon)` / `AddRightGroupbox(name, icon)`. Icons are [Lucide](https://lucide.dev/icons) names.
+- `Group:AddTab("General")` adds a section strip inside the groupbox.
+- Drag a groupbox header out of the window to detach it, and drop it back inside to attach it again.
+- `SetCollapsed`, `ToggleCollapsed`, `Detach`, `Attach` and `IsDetached` are available.
+- `Group:GetControl(x)` returns the control API (`SetText`, `SetDisabled`, `SetVisible`, `OnChanged`, `Destroy`) for any control.
+
+</details>
 
 ## Window
 
 ```lua
-Window:SetVisible(false)
+local Window = Library:CreateWindow({
+    Title = "Viz",
+    Size = Vector2.new(640, 460),
+    Layout = "Bottom bar",          -- Bottom bar, Top bar, Left bar, Right bar
+    SearchStyle = "Bar",            -- Bar (in the dock) or Header (in the window)
+    MenuKey = Enum.KeyCode.RightShift,
+    AutoHide = false,               -- hide the dock until the mouse reaches the edge
+    NotificationPosition = "BottomRight",
+    DPIScale = 1,                   -- 0.5 to 2
+})
+```
+
+```lua
 Window:Toggle()
-Window:SetStyle("Left bar") -- Bottom bar, Top bar, Left bar, Right bar
-Window:SetSearchStyle("Header") -- Bar (default) or Header
+Window:SetVisible(false)
+Window:SetStyle("Left bar")
+Window:SetSearchStyle("Header")
 Window:SetAutoHide(true)
+Window:SetDPIScale("125%")
 Window:SetSize(Vector2.new(700, 480))
 Window:SetSearch("speed")
-Window:SetTitle("My UI")
-Window:Notify({Title = "Viz", Content = "Ready"})
-Window:SetNotificationPosition("TopRight") -- TopLeft, Top, TopRight, BottomLeft, Bottom, BottomRight
-Window:Dialog({Title = "Continue?", Content = "Confirm this action.", OnConfirm = function() end})
+Window:Notify({ Title = "Viz", Content = "Ready", Icon = "check" })
+Window:Dialog({ Title = "Continue?", Content = "Confirm this action.", OnConfirm = function() end })
 Library:Unload()
 ```
 
-`CreateWindow` accepts `Title`, `Size` (`Vector2`), `Layout`, `SearchStyle`, `MenuKey`, `AutoHide`, and `NotificationPosition` (default `BottomRight`). `SearchStyle` shows one search field: `Bar` (default) puts a taskbar-style search pill in the bar, `Header` uses the field in the window header; players can switch it from the "Search bar" dropdown in the theme Style tab. It replaces the previous window created by that library instance. `Layout` picks the screen edge for the tab bar: `Bottom bar` (default), `Top bar`, `Left bar` or `Right bar`; players can also change it from the "Bar position" dropdown in the theme Style tab. The menu key is RightShift. Create your tabs before loading a config. After replacing a window, bind managers again with `SetLibrary`.
+Players can change the bar position, search style, auto-hide, DPI scale, notification position and menu key from the **Settings** tab. Drag the window anywhere, even partly off screen, and resize it from the bottom-right corner.
 
-Navigation uses the original bottom bar with icon buttons between two dividers and a decorative user avatar. With `SearchStyle = "Bar"` a search pill sits before the tabs and reopens a hidden window when used; on a left or right bar it is a round button that opens a small search card beside the bar. The avatar has no click action. The header uses the cloud logo and a wide search field. Interface contains the keybind controls; auto-hide is in Themes > Style. Quick settings and the user profile card are removed. Legacy config layout values are restored as Bottom bar. Theme controls are available in the Settings tab through ThemeManager. Corner radius, animation speed, and UI scale are fixed; the window still fits the viewport automatically. Group positions stay in the current session. Configs save control values, layout, search style, menu key, navigation auto-hide, keybind list visibility, and theme.
-
-## Config and theme API
+## Themes and configs
 
 ```lua
-local ok, err = SaveManager:Create("default") -- refuses to replace a file
-ok, err = SaveManager:Overwrite("default") -- requires an existing file
-ok, err = SaveManager:Load("default")
-SaveManager:SaveAutoloadConfig("default")
-SaveManager:SetIgnoreIndexes({"TemporaryControl"})
-SaveManager:IgnoreThemeSettings()
-local json = SaveManager:SaveJSON()
-ok, err = SaveManager:LoadJSON(json)
-
-ThemeManager:ApplyTheme("Light") -- Default, Light, Black, Mint, Nord, Dracula
-ThemeManager:ApplyThemeData({Accent = Color3.fromRGB(87, 212, 178)})
+ThemeManager:ApplyTheme("Light")   -- Default, Light, Black, Mint, Nord, Dracula
+ThemeManager:ApplyThemeData({ Accent = Color3.fromRGB(87, 212, 178) })
 ThemeManager:SaveCustomTheme("My theme")
 ThemeManager:SaveDefault("My theme")
+
+SaveManager:Create("default")       -- refuses to replace an existing file
+SaveManager:Overwrite("default")
+SaveManager:Load("default")
+SaveManager:SaveAutoloadConfig("default")
+SaveManager:SetIgnoreIndexes({ "TemporaryControl" })
+local json = SaveManager:SaveJSON()
+SaveManager:LoadJSON(json)
 ```
 
-File operations require the executor's file functions. Studio can use `SaveJSON` / `LoadJSON` and store the JSON through its own persistence code. File/config methods return `ok, err`; JSON export returns a string. Folder names may contain safe subfolders; config/theme names cannot contain path separators and are limited to 64 characters. Listing failures are shown in the settings UI without clearing an existing selection.
+<details>
+<summary><b>Notes</b></summary>
 
-Touch-enabled devices use ordinary Frames instead of CanvasGroup textures by default to avoid blank rendering when texture memory is exhausted. Group fade effects are skipped in this mode; visibility and control interactions remain available. Set `CanvasGroups = false` in `CreateWindow` to force this mode on any device, or `CanvasGroups = true` to retain grouped fades. `Example.lua` displays startup errors in a plain on-screen panel and also logs the traceback.
+<br>
 
-Editing colors, font or the background image, and importing theme data, clears the preset selection and displays `Custom`. `SaveCustomTheme(name)` creates a new theme and refuses to overwrite an existing file. Use the settings panel's `Overwrite theme` button with the desired `Theme name`; it asks for confirmation. The API can explicitly overwrite an existing theme with `SaveCustomTheme(name, true)`.
+- File operations need the executor's file functions. In Studio, use `SaveJSON` / `LoadJSON` with your own storage.
+- File and config methods return `ok, err`.
+- Configs and themes are validated before they are applied, and a failed load rolls back. Unknown IDs are ignored, so old configs keep working after you remove a control.
+- Create all tabs and controls before loading a config. After replacing a window, call `SetLibrary` again.
+- On touch devices, Viz uses plain Frames instead of CanvasGroups so the UI does not render blank when texture memory runs out. Force a mode with `CanvasGroups = true` / `false` in `CreateWindow`.
+- Icons need `getcustomasset` to load the Lucide font. Without it, Viz falls back to a built-in sprite set with fewer icons.
 
-Config values and theme data are validated before application. A failed write rolls back prior values. Callbacks run after the complete restore; callback failures are reported after application. Unknown IDs are ignored so configs can survive removed controls. Viz uses config schema version 1 and accepts the earlier Base UI schema when IDs still match. Managers expose `new()` for independent instances and accept either `SetLibrary(Library)` or `SetLibrary(Window)`.
+</details>
 
-## Validation
+## Credits
 
-The runtime modules and example compile with Luau. `tests/ui-regressions.js` passes 60 regression checks covering config cancellation, snapshot and callback failures, rollback, shared name limits, theme overwrite confirmation, preset synchronization, file-list errors, modifier keybinds, slider precision, toggle click/drag gestures, the mobile Frame rendering fallback and startup error reporting. These checks use mocked services and UI controls, plus extracted Library functions; they do not verify in-game rendering.
-
-```powershell
-node tests/ui-regressions.js <path-to-luau.exe>
-node tests/ui-features.js <path-to-luau.exe>
-```
-
-The feature suite adds 55 behavioral checks for input validation/commit modes, listener cleanup, dependency restoration/visibility, and tooltip positioning/hover cancellation. Tooltip placement accounts for the Roblox GUI inset, flips at viewport edges and validates the pointer each frame. Hover rendering and layout still require verification in Roblox. Obsidian-derived features and attribution are documented in `THIRD_PARTY_NOTICES.md`; retain it and `OBSIDIAN_LICENSE.txt` when distributing the library.
+- Some features and API names are adapted from [Obsidian](https://github.com/deividcomsono/Obsidian) by deividcomsono (MIT). The license notice is at the top of `Library.lua`; keep it when you redistribute.
+- Icons by [Lucide](https://lucide.dev), loaded through [lucide-roblox-direct](https://github.com/notpoiu/lucide-roblox-direct).
