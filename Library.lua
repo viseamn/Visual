@@ -4711,14 +4711,20 @@ function Library:CreateWindow(config)
                     dockSearch.Size = UDim2.fromOffset(34, 34)
                     dockSearch.BackgroundTransparency = (hovering or box:IsFocused()) and 0.4 or 1
                     glyph.Position = UDim2.fromOffset(9, 9)
-                    card.AnchorPoint = Vector2.new(1, 0)
-                    rest, away = UDim2.new(1, 7, 1, 14), UDim2.new(1, 7, 1, 6)
+                    -- The card floats above the window, centred over the tab strip and as wide as it, so it
+                    -- never covers the page.
+                    local stripWidth = sidebar.Size.X.Offset
+                    card.Size = UDim2.fromOffset(math.max(236, stripWidth), 48)
+                    card.AnchorPoint = Vector2.new(0.5, 1)
+                    local centre = 7 - stripWidth / 2
+                    rest, away = UDim2.new(1, centre, 0, -24), UDim2.new(1, centre, 0, -16)
                 else
                     dockSearch.AnchorPoint = Vector2.new(0.5, 0)
                     dockSearch.Position = UDim2.new(0.5, 0, 0, 10)
                     dockSearch.Size = UDim2.fromOffset(44, 44)
                     dockSearch.BackgroundTransparency = 0.2
                     glyph.Position = UDim2.fromOffset(14, 14)
+                    card.Size = UDim2.fromOffset(236, 48)
                     divider.AnchorPoint = Vector2.new(0.5, 0)
                     divider.Position = UDim2.new(0.5, 0, 1, 10)
                     divider.Size = UDim2.fromOffset(32, 1)
