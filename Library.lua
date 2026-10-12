@@ -240,6 +240,10 @@ local function setIcon(image, name)
     glyph.Text = asset.Text
 end
 
+-- Lives outside CreateWindow: that function sits at Luau's 200-local limit when compiled without
+-- optimizations (as many executors do), so it cannot take another local.
+local keybindCreated = 0
+
 function Library:CreateWindow(config)
     config = config or {}
     assert(type(config) == "table", "CreateWindow expects an options table")
@@ -728,7 +732,7 @@ function Library:CreateWindow(config)
         if previous and previous.Release then previous.Release() end
     end
     -- control -> creation index, so the keybind menu lists toggles in the order they were made.
-    local keybindControls, keybindCreated = {}, 0
+    local keybindControls = {}
     local shortKeyNames = {
         LeftControl = "Ctrl",
         RightControl = "Ctrl",
