@@ -1243,6 +1243,7 @@ function Library:CreateWindow(config)
         visible = visible == true
         if uiShown == visible then return end
         uiShown = visible
+        screen:SetAttribute("Shown", visible)
         cancelKeyCapture()
         closeDropdown(true)
         finishSlider()
@@ -5968,6 +5969,88 @@ function Library:CreateWindow(config)
     function window:SetVisible(value) setUIVisible(value) end
     function window:IsVisible() return uiShown end
     function window:Toggle() setUIVisible(not uiShown) end
+    -- Floating round button that shows/hides the window, for touch screens with no menu key. Tap to toggle,
+    -- drag to move. Built here (its own scope) because CreateWindow is at Luau's 200-local limit.
+    function window:SetToggleButtonVisible(visible)
+        local button = self.ToggleButton
+        if not button then
+            if not visible then return end
+            button = rounded("ImageButton", "ToggleButton", viewport, 0, 0, 48, 48, "Background", 24)
+            button.AutoButtonColor = false
+            button.AnchorPoint = Vector2.new(0.5, 0.5)
+            button.Position = UDim2.new(0, 44, 0.3, 0)
+            button.ZIndex = 190
+            glassSurface(button, 0.12)
+            local pressScale = Instance.new("UIScale")
+            pressScale.Parent = button
+            local mark = Instance.new("ImageLabel")
+            mark.Name = "Logo"
+            mark.BackgroundTransparency = 1
+            mark.AnchorPoint = Vector2.new(0.5, 0.5)
+            mark.Position = UDim2.fromScale(0.5, 0.5)
+            mark.Size = UDim2.fromOffset(28, 28)
+            mark.ScaleType = Enum.ScaleType.Fit
+            mark.Image = logo.Image
+            mark.Parent = button
+            logo:GetPropertyChangedSignal("Image"):Connect(function() mark.Image = logo.Image end)
+            -- Dimmed while the window is hidden, so the button doubles as a state indicator.
+            local function refreshState()
+                motion(mark, { ImageTransparency = uiShown and 0 or 0.4 }, 0.18)
+            end
+            refreshState()
+            screen:GetAttributeChangedSignal("Shown"):Connect(refreshState)
+            -- Stored as a fraction of the screen, so it keeps its spot across rotations and resizes.
+            local function place(center)
+                local area, half = viewport.AbsoluteSize, button.AbsoluteSize / 2 + Vector2.new(4, 4)
+                center = Vector2.new(
+                    math.clamp(center.X, half.X, math.max(half.X, area.X - half.X)),
+                    math.clamp(center.Y, half.Y, math.max(half.Y, area.Y - half.Y))
+                )
+                button.Position = UDim2.fromScale(center.X / math.max(1, area.X), center.Y / math.max(1, area.Y))
+            end
+            local function currentCenter()
+                return button.AbsolutePosition + button.AbsoluteSize / 2 - viewport.AbsolutePosition
+            end
+            track(viewport:GetPropertyChangedSignal("AbsoluteSize"):Connect(function() place(currentCenter()) end))
+            local pressInput, pressStart, pressOrigin, dragged
+            local function isPointer(input)
+                return input.UserInputType == Enum.UserInputType.Touch
+                    or input.UserInputType == Enum.UserInputType.MouseButton1
+            end
+            button.InputBegan:Connect(function(input)
+                if pressInput or not isPointer(input) then return end
+                pressInput, dragged = input, false
+                pressStart = Vector2.new(input.Position.X, input.Position.Y)
+                pressOrigin = currentCenter()
+                motion(pressScale, { Scale = 0.9 }, 0.12)
+            end)
+            track(UserInputService.InputChanged:Connect(function(input)
+                if not pressInput then return end
+                local follows = input == pressInput
+                    or pressInput.UserInputType == Enum.UserInputType.MouseButton1
+                        and input.UserInputType == Enum.UserInputType.MouseMovement
+                if not follows then return end
+                local delta = Vector2.new(input.Position.X, input.Position.Y) - pressStart
+                -- A little slack so a slightly shaky tap still counts as a tap.
+                if not dragged and delta.Magnitude < 8 then return end
+                dragged = true
+                place(pressOrigin + delta)
+            end))
+            track(UserInputService.InputEnded:Connect(function(input)
+                if not pressInput then return end
+                -- Touches must be the same finger; the mouse button may arrive as a fresh InputObject.
+                local ends = input == pressInput
+                    or pressInput.UserInputType == Enum.UserInputType.MouseButton1
+                        and input.UserInputType == Enum.UserInputType.MouseButton1
+                if not ends then return end
+                pressInput = nil
+                motion(pressScale, { Scale = 1 }, 0.2)
+                if not dragged and uiAlive then setUIVisible(not uiShown) end
+            end))
+            self.ToggleButton = button
+        end
+        button.Visible = visible == true
+    end
     function window:SetStyle(value)
         assert(layoutEdges[value], "Layout must be Bottom bar, Top bar, Left bar or Right bar")
         applyStyle(value)
@@ -6065,6 +6148,12 @@ function Library:CreateWindow(config)
         table.clear(Toggles)
     end
     if config.DPIScale then window:SetDPIScale(config.DPIScale) end
+    -- Shown by default on touch devices; ToggleButton = true/false forces it on or off.
+    if config.ToggleButton == nil then
+        window:SetToggleButtonVisible(UserInputService.TouchEnabled)
+    else
+        window:SetToggleButtonVisible(config.ToggleButton == true)
+    end
     self.Window = window
     self.Options, self.Toggles = Options, Toggles
     return window

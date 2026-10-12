@@ -9,6 +9,7 @@ local Window = Library:CreateWindow({
     Size = Vector2.new(640, 460),
     Layout = "Bottom bar", -- "Bottom bar", "Top bar", "Left bar" or "Right bar"
     MenuKey = Enum.KeyCode.RightShift,
+    -- ToggleButton = true, -- floating show/hide button; on by default on touch devices
 })
 
 -- Every control created with an ID ends up here, e.g. Toggles.MyToggle.Value
