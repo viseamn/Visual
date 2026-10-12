@@ -368,6 +368,8 @@ function Library:CreateWindow(config)
     screen.IgnoreGuiInset = true
     screen.ScreenInsets = Enum.ScreenInsets.None
     screen.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+    -- Highest DisplayOrder so the game's own ScreenGuis never draw over the library.
+    screen.DisplayOrder = 2147483647
     screen.Parent = playerGui
 
     local function animationDuration(seconds) return seconds end
@@ -725,7 +727,8 @@ function Library:CreateWindow(config)
         activeColorDrag = nil
         if previous and previous.Release then previous.Release() end
     end
-    local keybindControls = {}
+    -- control -> creation index, so the keybind menu lists toggles in the order they were made.
+    local keybindControls, keybindCreated = {}, 0
     local shortKeyNames = {
         LeftControl = "Ctrl",
         RightControl = "Ctrl",
@@ -2898,7 +2901,8 @@ function Library:CreateWindow(config)
                 refreshKeybindMenu(control)
                 if capturingKeybind == control then capturingKeybind = nil end
             end)
-            keybindControls[control] = true
+            keybindCreated = keybindCreated + 1
+            keybindControls[control] = keybindCreated
             control:SetKeybind(options.Keybind)
             control:SetNotify(control.Notify)
             control:SetModifiers(options.Modifiers)
@@ -4795,7 +4799,7 @@ function Library:CreateWindow(config)
                 -- Toggles without a key picker (or with NoUI) stay out of the keybind list.
                 if control.HasKeyPicker and not control.NoUI then table.insert(controls, control) end
             end
-            table.sort(controls, function(a, b) return a.Name < b.Name end)
+            table.sort(controls, function(a, b) return keybindControls[a] < keybindControls[b] end)
             for index, control in ipairs(controls) do
                 local entry = keybindRows[control]
                 if not entry then
