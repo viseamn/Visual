@@ -502,17 +502,38 @@ function Library:CreateWindow(config)
                     end
                     object = object.Parent
                 end
+                -- Only write what changed: most glows sit still, and rewriting every ring each frame keeps
+                -- the engine re-rendering (and re-rasterizing any CanvasGroup above) for nothing.
                 if strength <= 0.002 then
-                    halo.Visible = false
+                    if record.Shown ~= false then
+                        record.Shown = false
+                        halo.Visible = false
+                    end
                 else
                     local factor = math.max(0.01, record.Factor())
                     local spread = record.Spread
                     local position = (element.AbsolutePosition - record.Layer.AbsolutePosition) / factor
                     local size = element.AbsoluteSize / factor
-                    halo.Visible = true
-                    halo.Position = UDim2.fromOffset(position.X - spread, position.Y - spread)
-                    halo.Size = UDim2.fromOffset(size.X + spread * 2, size.Y + spread * 2)
-                    paintHalo(record.Layers, record.Role and Theme[record.Role] or element.BackgroundColor3, strength)
+                    local x, y = math.floor(position.X - spread + 0.5), math.floor(position.Y - spread + 0.5)
+                    local width, height = math.floor(size.X + spread * 2 + 0.5), math.floor(size.Y + spread * 2 + 0.5)
+                    if record.Shown ~= true then
+                        record.Shown = true
+                        halo.Visible = true
+                    end
+                    if x ~= record.X or y ~= record.Y then
+                        record.X, record.Y = x, y
+                        halo.Position = UDim2.fromOffset(x, y)
+                    end
+                    if width ~= record.Width or height ~= record.Height then
+                        record.Width, record.Height = width, height
+                        halo.Size = UDim2.fromOffset(width, height)
+                    end
+                    local color = record.Role and Theme[record.Role] or element.BackgroundColor3
+                    if color ~= record.Color or record.GlowFactor ~= glowFactor
+                        or math.abs(strength - (record.Painted or -1)) > 0.004 then
+                        record.Color, record.Painted, record.GlowFactor = color, strength, glowFactor
+                        paintHalo(record.Layers, color, strength)
+                    end
                 end
             end
         end
@@ -944,8 +965,9 @@ function Library:CreateWindow(config)
         object.Parent = parent
         return object
     end
-    -- Each toast sits in a padded holder that also contains its glow, so the stack's edges and the
-    -- gap between toasts are measured from the holders; the padding is cancelled out below.
+    -- Each toast sits in a padded holder that also contains its glow, inside a slot whose height is the
+    -- card plus the gap. The holder overhangs its slot, so the glow padding never adds to the gap, and
+    -- the slot's height is animated so the rest of the stack glides instead of jumping.
     local toastGlowSpread = 16
     local toastStack = Instance.new("Frame")
     toastStack.Name = "Notifications"
@@ -958,7 +980,6 @@ function Library:CreateWindow(config)
     toastLimit.Parent = toastStack
     local toastLayout = Instance.new("UIListLayout")
     toastLayout.SortOrder = Enum.SortOrder.LayoutOrder
-    toastLayout.Padding = UDim.new(0, 8 - toastGlowSpread * 2)
     toastLayout.Parent = toastStack
     local toasts, toastOrder = {}, 0
     local notificationAnchors = {
@@ -990,7 +1011,8 @@ function Library:CreateWindow(config)
         toastLayout.VerticalAlignment = anchor.Y == 0 and Enum.VerticalAlignment.Top
             or Enum.VerticalAlignment.Bottom
         for _, toast in ipairs(toasts) do
-            toast.Holder.LayoutOrder = toastLayoutOrder(toast.Order)
+            toast.Slot.LayoutOrder = toastLayoutOrder(toast.Order)
+            toast.Place()
         end
     end
     setNotificationPosition(notificationPosition)
@@ -1014,20 +1036,49 @@ function Library:CreateWindow(config)
 
         -- The holder is sized by hand from the card. Letting it auto-size would include the glow, which
         -- is sized from the holder, and the two would inflate each other every frame.
+        local slot = Instance.new("Frame")
+        slot.Name = "Notification"
+        slot.BackgroundTransparency = 1
+        slot.BorderSizePixel = 0
+        slot.Size = UDim2.fromOffset(0, 0)
+        slot.LayoutOrder = toastLayoutOrder(toastOrder)
+        slot:SetAttribute("PassInput", true)
+        slot.Parent = toastStack
+        -- 0..1 share of the slot's full height; tweened on entry and exit.
+        local reveal = Instance.new("NumberValue")
+        reveal.Value = 0
+        reveal.Parent = slot
         local holder = newUI("CanvasGroup")
-        holder.Name = "Notification"
+        holder.Name = "Toast"
         holder.BackgroundTransparency = 1
         holder.BorderSizePixel = 0
-        holder.LayoutOrder = toastLayoutOrder(toastOrder)
         setGroupTransparency(holder, 1)
         holder:SetAttribute("PassInput", true)
-        holder.Parent = toastStack
+        holder.Parent = slot
         local cardScale = Instance.new("UIScale")
-        cardScale.Scale = 0.94
+        cardScale.Scale = 0.96
         cardScale.Parent = holder
         local glow, glowRings = buildHalo(holder, toastGlowSpread, 12)
         glow.Size = UDim2.fromScale(1, 1)
         paintHalo(glowRings, Theme.Accent, 0.45)
+
+        -- The holder hugs the screen edge the stack is anchored to and slides in from it.
+        local function restingPosition()
+            return UDim2.fromScale(0, notificationAnchors[notificationPosition].Y)
+        end
+        local function hiddenPosition()
+            local anchor = notificationAnchors[notificationPosition]
+            if anchor.X == 0.5 then
+                return restingPosition() + UDim2.fromOffset(0, anchor.Y == 1 and 28 or -28)
+            end
+            return restingPosition() + UDim2.fromOffset(anchor.X == 1 and 64 or -64, 0)
+        end
+        local function layoutSlot()
+            local fullHeight = math.max(0, holder.Size.Y.Offset - toastGlowSpread * 2 + 8)
+            slot.Size = UDim2.fromOffset(holder.Size.X.Offset, math.floor(fullHeight * reveal.Value + 0.5))
+            holder.AnchorPoint = Vector2.new(0, notificationAnchors[notificationPosition].Y)
+        end
+        reveal.Changed:Connect(layoutSlot)
 
         local card = rounded("Frame", "Card", holder, toastGlowSpread, toastGlowSpread, 0, 0, "Background", 12)
         card.AutomaticSize = Enum.AutomaticSize.XY
@@ -1037,6 +1088,7 @@ function Library:CreateWindow(config)
                 math.ceil(size.X) + toastGlowSpread * 2,
                 math.ceil(size.Y) + toastGlowSpread * 2
             )
+            layoutSlot()
         end
         card:GetPropertyChangedSignal("AbsoluteSize"):Connect(fitHolder)
         card.BackgroundTransparency = 0.04
@@ -1097,14 +1149,24 @@ function Library:CreateWindow(config)
             { Size = UDim2.new(0, 0, 0, 2) }
         )
         timer:Play()
-        local entrance = tween(holder, { GroupTransparency = 0 }, 0.2)
-        motion(cardScale, { Scale = 1 }, 0.2)
-        local toast = { Closed = false, Holder = holder, Order = toastOrder }
+        -- Open the slot first so the stack makes room, while the card slides and fades in from the edge.
+        holder.Position = hiddenPosition()
+        local entrance = {
+            tween(reveal, { Value = 1 }, 0.32),
+            tween(holder, { Position = restingPosition() }, 0.45),
+            tween(holder, { GroupTransparency = 0 }, 0.3),
+        }
+        motion(cardScale, { Scale = 1 }, 0.4)
+        local toast = { Closed = false, Slot = slot, Holder = holder, Order = toastOrder }
+        function toast.Place()
+            layoutSlot()
+            if not toast.Closed then holder.Position = restingPosition() end
+        end
         function toast:Dismiss(immediate)
             if self.Closed then return end
             self.Closed = true
             timer:Cancel()
-            entrance:Cancel()
+            for _, animation in ipairs(entrance) do animation:Cancel() end
             for index, item in ipairs(toasts) do
                 if item == self then
                     table.remove(toasts, index)
@@ -1112,17 +1174,21 @@ function Library:CreateWindow(config)
                 end
             end
             if immediate then
-                holder:Destroy()
+                slot:Destroy()
                 return
             end
-            tween(holder, { GroupTransparency = 1 }, 0.18)
-            motion(cardScale, { Scale = 0.94 }, 0.18)
-            task.delay(animationDuration(0.18), function()
-                if uiAlive and holder.Parent then holder:Destroy() end
+            -- Slide back out toward the edge, then close the gap once the card is mostly gone.
+            tween(holder, { Position = hiddenPosition(), GroupTransparency = 1 }, 0.28)
+            motion(cardScale, { Scale = 0.96 }, 0.28)
+            task.delay(animationDuration(0.1), function()
+                if uiAlive and slot.Parent then tween(reveal, { Value = 0 }, 0.3) end
+            end)
+            task.delay(animationDuration(0.42), function()
+                if uiAlive and slot.Parent then slot:Destroy() end
             end)
         end
         table.insert(toasts, toast)
-        if #toasts > 4 then toasts[1]:Dismiss(true) end
+        if #toasts > 4 then toasts[1]:Dismiss() end
         close.Activated:Connect(function() toast:Dismiss() end)
         task.delay(duration, function()
             if uiAlive then toast:Dismiss() end
@@ -2047,7 +2113,15 @@ function Library:CreateWindow(config)
                 )
             end
         end
-        innerLayout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function() resizeGroup(false) end)
+        innerLayout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
+            -- While the window scales in or out, the content size changes every frame only because of the
+            -- scale (and pixel rounding at small scales makes the height wobble). Re-sync once it settles.
+            if windowTransitioning and not detachedHost then return end
+            resizeGroup(false)
+        end)
+        groupTrack(windowMotionHost:GetPropertyChangedSignal("Visible"):Connect(function()
+            if not windowMotionHost.Visible and not detachedHost then resizeGroup(true) end
+        end))
         local groupScaleConnection = scale:GetPropertyChangedSignal("Scale"):Connect(function() resizeGroup(true) end)
         frame.Destroying:Connect(function() groupScaleConnection:Disconnect() end)
         function group:SetCollapsed(collapsed, immediate)
@@ -5346,6 +5420,9 @@ function Library:CreateWindow(config)
         end
         finishUIVisibility = function()
             if windowTransitioning then
+                -- Hide before moving back out of the host, so a closing window is not laid out at full
+                -- size for one last frame.
+                if not uiShown then root.Visible = false end
                 root.Parent = viewport
                 root.Position = savedPosition
                 windowMotionScale.Scale = 1
