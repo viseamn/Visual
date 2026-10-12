@@ -819,19 +819,25 @@ function Library:CreateWindow(config)
             if not passesInput(hit) then return end
         end
     end
+    -- Returns whether a press on `hit` may drag the window, whether that drag must wait for a long press,
+    -- and the scrolling frame it landed in. On touch, a swipe over a scrollable column must scroll and
+    -- a quick tap on a card must reach its controls, so both only drag after the finger is held still.
     local function windowDragAllowed(hit, window, touch)
+        local needsHold, scroller = false, nil
         while hit and hit ~= window do
-            if
-                hit:IsA("GuiButton")
-                or hit:IsA("TextBox")
-                or hit:GetAttribute("BlocksWindowDrag")
-                or (touch and hit:IsA("ScrollingFrame") and hit.ScrollingEnabled)
-            then
-                return false
+            if hit:IsA("GuiButton") or hit:IsA("TextBox") then return false end
+            if hit:GetAttribute("BlocksWindowDrag") then
+                if not touch then return false end
+                needsHold = true
+            end
+            if touch and not scroller and hit:IsA("ScrollingFrame") and hit.ScrollingEnabled
+                and (hit.AbsoluteCanvasSize.Y > hit.AbsoluteWindowSize.Y + 1
+                    or hit.AbsoluteCanvasSize.X > hit.AbsoluteWindowSize.X + 1) then
+                needsHold, scroller = true, hit
             end
             hit = hit.Parent
         end
-        return hit == window
+        return hit == window, needsHold, scroller
     end
     local function dropInsideWindow(point, window)
         local origin, size = window.AbsolutePosition, window.AbsoluteSize
@@ -5320,7 +5326,11 @@ function Library:CreateWindow(config)
         profile.Visible = not strip
         dockDivider.Visible = not strip
         dockFitScale = math.min(root:GetAttribute("DPIScale") or 1, math.max(0.1, (available - 24) / length))
-        dockReveal.Size = vertical and UDim2.fromOffset(20, 104) or UDim2.fromOffset(104, 20)
+        -- Fingers need a far bigger target than the thin grip, and the very edge is the OS swipe zone.
+        local revealLength, revealDepth = 104, 20
+        if UserInputService.TouchEnabled then revealLength, revealDepth = 180, 44 end
+        dockReveal.Size = vertical and UDim2.fromOffset(revealDepth, revealLength)
+            or UDim2.fromOffset(revealLength, revealDepth)
         renderDock()
         if not strip then sidebar.Size = UDim2.fromScale(1, 1) end
         dockSearch.Visible = searchStyle == "Bar"
@@ -5551,8 +5561,16 @@ function Library:CreateWindow(config)
     -- window dragging live in here instead of at function level.
     do
     local dragInput, dragStart, windowStart, dragTarget, dragRendered
+    -- Touch press waiting to become a drag (Input, Start, Time, Scroller), and the scroller frozen by one.
+    local hold, heldScroller = {}, nil
+    local function releaseScroller()
+        if heldScroller then heldScroller.ScrollingEnabled = true end
+        heldScroller = nil
+    end
     cancelWindowDrag = function()
         dragInput, dragTarget, dragRendered = nil, nil, nil
+        hold.Input = nil
+        releaseScroller()
     end
     local function inside(point, object)
         local p, size = object.AbsolutePosition, object.AbsoluteSize
@@ -5576,7 +5594,17 @@ function Library:CreateWindow(config)
         then
             return
         end
-        if not windowDragAllowed(hit, root, input.UserInputType == Enum.UserInputType.Touch) then return end
+        local allowed, needsHold, scroller =
+            windowDragAllowed(hit, root, input.UserInputType == Enum.UserInputType.Touch)
+        if not allowed then return end
+        if needsHold then
+            if not hold.Input then
+                hold.Input, hold.Time, hold.Scroller = input, os.clock(), scroller
+                hold.Start = Vector2.new(input.Position.X, input.Position.Y)
+                hold.Canvas = scroller and scroller.CanvasPosition
+            end
+            return
+        end
         -- A focused TextBox (search, a textbox control, or chat) only loses focus after this click is
         -- delivered, so treat the click as the blur instead of refusing the drag.
         local focused = UserInputService:GetFocusedTextBox()
@@ -5588,20 +5616,54 @@ function Library:CreateWindow(config)
         dragTarget = windowStart
         dragRendered = windowStart
     end
+    -- A touch held still on a scrollable column becomes a window drag; the column stops scrolling until
+    -- the finger lifts, so the two never fight.
+    local function promoteHold()
+        local input, scroller = hold.Input, hold.Scroller
+        hold.Input = nil
+        if dragInput or dialogOpen or windowTransitioning or root:GetAttribute("Resizing")
+            or activeSlider or activeColorDrag or activeToggleDrag then
+            return
+        end
+        if scroller and scroller.Parent then
+            heldScroller = scroller
+            scroller.ScrollingEnabled = false
+            scroller.CanvasPosition = hold.Canvas
+        end
+        closeDropdown(true)
+        dragInput = input
+        dragStart = Vector2.new(input.Position.X, input.Position.Y)
+        windowStart = windowAnchor()
+        dragTarget = windowStart
+        dragRendered = windowStart
+    end
     body.Active = true
     sidebar.Active = false
     header.Active = true
     bindDragStart(root, beginDrag)
-    local function moveDrag(input)
+    -- Connections go through track() (disconnected when the UI is destroyed): this block is at Luau's
+    -- 200-local limit, so it cannot hold them in locals.
+    track(UserInputService.InputChanged:Connect(function(input)
+        -- Moving before the hold time means the finger is scrolling, not grabbing the window.
+        if hold.Input and input == hold.Input
+            and (Vector2.new(input.Position.X, input.Position.Y) - hold.Start).Magnitude > 10 then
+            hold.Input = nil
+        end
         if not dragInput then return end
         local mouse = dragInput.UserInputType == Enum.UserInputType.MouseButton1
             and input.UserInputType == Enum.UserInputType.MouseMovement
         if input ~= dragInput and not mouse then return end
         local pointer = Vector2.new(input.Position.X, input.Position.Y)
         dragTarget = clampWindow(windowStart + pointer - dragStart)
-    end
-    local moveConnection = UserInputService.InputChanged:Connect(moveDrag)
-    local dragFrameConnection = game:GetService("RunService").RenderStepped:Connect(function(dt)
+    end))
+    track(game:GetService("RunService").RenderStepped:Connect(function(dt)
+        if hold.Input then
+            if hold.Scroller and (hold.Scroller.CanvasPosition - hold.Canvas).Magnitude > 2 then
+                hold.Input = nil
+            elseif os.clock() - hold.Time >= 0.3 then
+                promoteHold()
+            end
+        end
         if not dragTarget then return end
         local current = dragRendered or windowAnchor()
         dragTarget = clampWindow(dragTarget)
@@ -5612,27 +5674,30 @@ function Library:CreateWindow(config)
         end
         dragRendered = nextPosition
         root.Position = UDim2.fromOffset(math.floor(nextPosition.X + 0.5), math.floor(nextPosition.Y + 0.5))
-    end)
-    local endConnection = UserInputService.InputEnded:Connect(function(input)
-        if input == dragInput then dragInput = nil end
-    end)
-    local focusConnection = UserInputService.WindowFocusReleased:Connect(function()
+    end))
+    track(UserInputService.InputEnded:Connect(function(input)
+        if input == hold.Input then hold.Input = nil end
+        if input == dragInput then
+            dragInput = nil
+            releaseScroller()
+        end
+    end))
+    track(UserInputService.WindowFocusReleased:Connect(function()
         dragInput, dragTarget, dragRendered = nil, nil, nil
-    end)
-    local dragResizeConnection = viewport:GetPropertyChangedSignal("AbsoluteSize"):Connect(function()
+        hold.Input = nil
+        releaseScroller()
+    end))
+    track(viewport:GetPropertyChangedSignal("AbsoluteSize"):Connect(function()
         if root.Position.X.Scale == 0 and root.Position.Y.Scale == 0 then
             dragInput = nil
+            releaseScroller()
             dragRendered = windowAnchor()
             dragTarget = clampWindow(dragRendered)
         end
-    end)
+    end))
     screen.Destroying:Connect(function()
         dragInput, dragTarget, dragRendered = nil, nil, nil
-        moveConnection:Disconnect()
-        dragFrameConnection:Disconnect()
-        endConnection:Disconnect()
-        focusConnection:Disconnect()
-        dragResizeConnection:Disconnect()
+        hold.Input = nil
     end)
     end
 
