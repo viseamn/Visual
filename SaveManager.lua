@@ -4,14 +4,32 @@ local function newManager()
     local SaveManager = { Version = "1.0.3", Folder = "Viz", Ignore = {} }
     local window, context
     local controlRegistry, ThemeManager
+    local lastWritten, autoSaveThread, loading = nil, nil, false
+    local function callback(self, name, ...)
+        if type(self[name]) ~= "function" then return end
+        local ok, err = pcall(self[name], ...)
+        if not ok then warn(err) end
+    end
+    local function copy(value)
+        if type(value) ~= "table" then return value end
+        local result = {}
+        for key, item in pairs(value) do result[key] = copy(item) end
+        return result
+    end
     local function bound()
         assert(context and context.IsAlive(), "SetLibrary must reference a live Viz window")
         return context
     end
     function SaveManager:SetLibrary(library)
         assert(type(library) == "table", "SetLibrary expects a Viz library or window")
-        window = library._Viz and library or library.Window
-        assert(window and window._Viz, "Create a Viz window before SetLibrary")
+        local target = library._Viz and library or library.Window
+        assert(target and target._Viz and target._Viz.IsAlive(), "Create a live Viz window before SetLibrary")
+        assert(not loading, "Cannot change library while loading")
+        if context and context ~= target._Viz then
+            self:SetAutoSave(false)
+            self.ActiveConfig, lastWritten = nil, nil
+        end
+        window = target
         context = window._Viz
         controlRegistry = context.Registry
         ThemeManager = context.Theme
@@ -36,7 +54,15 @@ local function newManager()
     end
     function SaveManager:SetFolder(name)
         assert(bound().Storage.SafeFolder(name), "Invalid folder")
-        self.Folder = name:gsub("\\", "/")
+        assert(not loading, "Cannot change folder while loading")
+        local folder = name:gsub("\\", "/")
+        if folder ~= self.Folder then
+            self:SetAutoSave(false)
+            self.Folder = folder
+            self.ActiveConfig, lastWritten = nil, nil
+            callback(self, "OnActiveConfigChanged", nil)
+        end
+        return self
     end
     function SaveManager:SetIgnoreIndexes(indexes)
         self.Ignore = {}
@@ -49,7 +75,7 @@ local function newManager()
         bound()
         local data = { Format = "Viz", Version = 1, Controls = {} }
         for id, entry in pairs(controlRegistry) do
-            if not self.Ignore[id] then data.Controls[id] = { Type = entry.Kind, Value = entry.Read() } end
+            if not self.Ignore[id] then data.Controls[id] = { Type = entry.Kind, Value = copy(entry.Read()) } end
         end
         if not self.IgnoreTheme then data.Theme = context.ExportTheme() end
         return data
@@ -67,19 +93,20 @@ local function newManager()
         end
         return true
     end
-    local lastWritten, autoSaveRunning
     SaveManager.AutoSave = false
     SaveManager.AutoSaveInterval = 1
     local function markActive(self, name)
         self.ActiveConfig = name
         local ok, data = pcall(snapshot, self)
         lastWritten = ok and data or nil
-        if self.OnActiveConfigChanged then self.OnActiveConfigChanged(name) end
+        callback(self, "OnActiveConfigChanged", name)
     end
     function SaveManager:GetActiveConfig() return self.ActiveConfig end
     local function autoSaveStep(self)
+        if loading or (context.IsLoading and context.IsLoading()) then return end
         local ok, data = pcall(snapshot, self)
-        if not ok or same(data, lastWritten) then return end
+        if not ok then error(data) end
+        if same(data, lastWritten) then return end
         local name = self.ActiveConfig or "autosave"
         local written, err = writeJSON(self, "configs", name, HttpService:JSONEncode(data))
         if not written then
@@ -89,28 +116,53 @@ local function newManager()
         end
         lastWritten = data
         if not self.ActiveConfig then markActive(self, name) end
-        if self.OnAutoSaved then self.OnAutoSaved(name) end
+        callback(self, "OnAutoSaved", name)
     end
     function SaveManager:SetAutoSave(enabled)
         enabled = enabled == true
-        if enabled and not hasFiles() then return false, "File storage unavailable" end
+        if enabled then
+            bound()
+            if not hasFiles() then return false, "File storage unavailable" end
+            local interval = self.AutoSaveInterval
+            if type(interval) ~= "number" or interval ~= interval or interval < 0.1 or interval == math.huge then
+                return false, "AutoSaveInterval must be a finite number of at least 0.1 seconds"
+            end
+        end
         self.AutoSave = enabled
-        if hasFiles() then pcall(function()
+        if context and context.IsAlive() and hasFiles() then pcall(function()
             folderPath(self, "configs")
             writefile(self.Folder .. "/autosave.txt", enabled and "1" or "0")
         end) end
-        if self.OnAutoSaveChanged then self.OnAutoSaveChanged(enabled) end
-        if enabled and not autoSaveRunning then
-            autoSaveRunning = true
-            task.spawn(function()
-                while true do
-                    task.wait(self.AutoSaveInterval)
-                    if not (self.AutoSave and context and context.IsAlive()) then break end
-                    autoSaveStep(self)
-                end
-                autoSaveRunning = false
-            end)
+        if not enabled and autoSaveThread then
+            local thread = autoSaveThread
+            autoSaveThread = nil
+            if thread ~= coroutine.running() then task.cancel(thread) end
         end
+        if enabled and not autoSaveThread then
+            autoSaveThread = coroutine.create(function()
+                while self.AutoSave do
+                    local interval = tonumber(self.AutoSaveInterval) or 1
+                    if interval ~= interval or interval == math.huge then interval = 1 end
+                    task.wait(math.max(0.1, interval))
+                    if not (self.AutoSave and context and context.IsAlive()) then break end
+                    local ok, err = pcall(autoSaveStep, self)
+                    if not ok then
+                        self:SetAutoSave(false)
+                        pcall(report, "Auto save", false, err)
+                        break
+                    end
+                end
+                if autoSaveThread == coroutine.running() then
+                    autoSaveThread = nil
+                    if self.AutoSave then
+                        self.AutoSave = false
+                        callback(self, "OnAutoSaveChanged", false)
+                    end
+                end
+            end)
+            task.spawn(autoSaveThread)
+        end
+        callback(self, "OnAutoSaveChanged", enabled)
         return true
     end
     function SaveManager:IsAutoSaveEnabled() return self.AutoSave end
@@ -125,7 +177,8 @@ local function newManager()
     local function loadJSON(self, content)
         bound()
         local ok, data = pcall(function() return HttpService:JSONDecode(content) end)
-        if not ok or type(data) ~= "table" or data.Version ~= 1 or type(data.Controls) ~= "table" then
+        if not ok or type(data) ~= "table" or (data.Format ~= nil and data.Format ~= "Viz")
+            or data.Version ~= 1 or type(data.Controls) ~= "table" then
             return false, "Invalid Viz config"
         end
         local pending = {}
@@ -151,7 +204,7 @@ local function newManager()
         local applied, err = pcall(function()
             window._Viz.CancelInteractions(true)
             for _, item in ipairs(pending) do
-                item.Previous = item.Entry.Read()
+                item.Previous = copy(item.Entry.Read())
                 item.Snapshotted = true
             end
             for _, item in ipairs(pending) do
@@ -185,8 +238,13 @@ local function newManager()
         return true
     end
     function SaveManager:LoadJSON(content)
+        if loading or (context and context.IsLoading and context.IsLoading()) then
+            return false, "A config is already loading"
+        end
+        loading = true
         local ok, result, err = pcall(loadJSON, self, content)
         if context then context.SetLoading(false) end
+        loading = false
         if not ok then return false, tostring(result) end
         return result, err
     end
@@ -222,8 +280,8 @@ local function newManager()
     function SaveManager:Delete(name)
         local ok, err = deleteJSON(self, "configs", name)
         if ok and self.ActiveConfig == name then
-            self.ActiveConfig = nil
-            if self.OnActiveConfigChanged then self.OnActiveConfigChanged(nil) end
+            self.ActiveConfig, lastWritten = nil, nil
+            callback(self, "OnActiveConfigChanged", nil)
         end
         return ok, err
     end

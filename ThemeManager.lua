@@ -4,19 +4,27 @@ local function newManager()
     local ThemeManager = { Version = "1.0.3", Folder = "Viz", Current = "Default" }
     local window, context
     local Theme, defaultTheme
+    local presetListener
     local function bound()
         assert(context and context.IsAlive(), "SetLibrary must reference a live Viz window")
         return context
     end
     function ThemeManager:SetLibrary(library)
         assert(type(library) == "table", "SetLibrary expects a Viz library or window")
-        window = library._Viz and library or library.Window
-        assert(window and window._Viz, "Create a Viz window before SetLibrary")
+        local target = library._Viz and library or library.Window
+        assert(target and target._Viz and target._Viz.IsAlive(), "Create a live Viz window before SetLibrary")
+        if context and context ~= target._Viz then
+            if context.Theme.OnPresetChanged == presetListener then context.Theme.OnPresetChanged = nil end
+            self.ColorControls, self.FontControl, self.ImageControl = nil, nil, nil
+            self.ContrastLabel, self.PresetSelector, self.StyleSection = nil, nil, nil
+        end
+        window = target
         context = window._Viz
         Theme, defaultTheme = window.Theme, context.Defaults
         self.BuiltInThemes = context.Theme.BuiltInThemes
         self.Current = context.Theme.Current
-        context.Theme.OnPresetChanged = function(name) self.Current = name end
+        presetListener = function(name) self.Current = name end
+        context.Theme.OnPresetChanged = presetListener
         self.Library = library
         return self
     end
@@ -92,7 +100,11 @@ local function newManager()
         return writeJSON(self, "themes", name, content)
     end
     function ThemeManager:ReloadCustomThemes() return listJSON(self, "themes") end
-    function ThemeManager:Delete(name) return deleteJSON(self, "themes", name) end
+    function ThemeManager:Delete(name)
+        local ok, err = deleteJSON(self, "themes", name)
+        if ok and self.Current == name then self:SyncPreset(nil) end
+        return ok, err
+    end
     function ThemeManager:SaveDefault(name)
         if not safeName(name) then return false, "Invalid theme name" end
         return pcall(function()
@@ -109,12 +121,15 @@ local function newManager()
         end)
         if not ok then return false, name end
         if not name then return true end
+        name = name:match("^%s*(.-)%s*$")
+        if not safeName(name) then return false, "Invalid default theme name" end
         return self:ApplyTheme(name)
     end
 
     function ThemeManager:SetFolder(name)
         assert(bound().Storage.SafeFolder(name), "Invalid folder")
         self.Folder = name:gsub("\\", "/")
+        return self
     end
     function ThemeManager:Validate(data) return bound().Theme:Validate(data) end
     function ThemeManager:ApplyThemeData(data, keepPopup) return bound().Theme:ApplyThemeData(data, keepPopup) end

@@ -21,12 +21,13 @@ end
 local function folderPath(manager, category)
     assert(hasFiles(), "File storage is unavailable. Use JSON import/export instead.")
     assert(safeFolder(manager.Folder), "Invalid folder name")
+    local base = manager.Folder:gsub("\\", "/")
     local current = ""
-    for segment in manager.Folder:gmatch("[^/]+") do
+    for segment in base:gmatch("[^/]+") do
         current = current == "" and segment or current .. "/" .. segment
         if not isfolder(current) then makefolder(current) end
     end
-    local folder = manager.Folder .. "/" .. category
+    local folder = base .. "/" .. category
     if not isfolder(folder) then makefolder(folder) end
     return folder
 end
@@ -124,9 +125,8 @@ end
 
 local function validInput(value, options)
     if type(value) ~= "string" then return false end
-    if options.MaxLength and utf8.len(value) then
-        if utf8.len(value) > options.MaxLength then return false end
-    elseif options.MaxLength then return false end
+    local length = utf8.len(value)
+    if not length or (options.MaxLength and length > options.MaxLength) then return false end
     if value == "" then return options.AllowEmpty ~= false end
     if options.Numeric then
         local number = tonumber(value)
@@ -3060,7 +3060,11 @@ function Library:CreateWindow(config)
             local minimum, maximum = options.Min or 0, options.Max or 100
             local step = options.Increment or 1
             local isRange = options.Range == true
-            assert(maximum > minimum and step > 0, "Invalid slider range")
+            assert(type(minimum) == "number" and type(maximum) == "number" and type(step) == "number"
+                and minimum == minimum and maximum == maximum and step == step
+                and math.abs(minimum) < math.huge and math.abs(maximum) < math.huge
+                and step < math.huge and maximum > minimum and maximum - minimum < math.huge
+                and step > 0, "Invalid slider range")
             local container = row(options.Name or "Slider", 28)
             local text = label(container, options.Name or "Slider")
             local trackStart = 0.62
@@ -5980,6 +5984,7 @@ function Library:CreateWindow(config)
             GetFont = function() return fontName end,
             Fonts = fontOrder,
             SetLoading = function(value) loadingConfig = value end,
+            IsLoading = function() return loadingConfig end,
             CancelInteractions = function(silent)
                 cancelKeyCapture()
                 closeDropdown(true)
