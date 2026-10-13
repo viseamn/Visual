@@ -244,6 +244,86 @@ end
 -- optimizations (as many executors do), so it cannot take another local.
 local keybindCreated = 0
 
+-- Theme helpers and constants shared by every window (kept out of CreateWindow, which is near Luau's 200-local limit).
+local function luminance(color)
+    local function linear(c) return c <= 0.04045 and c / 12.92 or ((c + 0.055) / 1.055) ^ 2.4 end
+    return 0.2126 * linear(color.R) + 0.7152 * linear(color.G) + 0.0722 * linear(color.B)
+end
+local function contrast(a, b)
+    local x, y = luminance(a), luminance(b)
+    return (math.max(x, y) + 0.05) / (math.min(x, y) + 0.05)
+end
+local function contrastingText(background)
+    local light, dark = Color3.fromRGB(245, 246, 250), Color3.fromRGB(15, 16, 20)
+    return contrast(light, background) >= contrast(dark, background) and light or dark
+end
+-- Font name -> Roblox font family. Families carry their own weights, so medium text (titles, buttons)
+-- stays medium in every font; a family without that weight falls back to its nearest one.
+local fontOrder = {
+    "BuilderSans", "Gotham", "SourceSans", "Roboto", "Montserrat", "Nunito", "Ubuntu", "Arimo",
+    "JosefinSans", "TitilliumWeb", "Oswald", "Jura", "Michroma", "FredokaOne", "Code", "RobotoMono",
+}
+local fontChoices = {
+    BuilderSans = "rbxasset://fonts/families/BuilderSans.json",
+    Gotham = "rbxasset://fonts/families/GothamSSm.json",
+    SourceSans = "rbxasset://fonts/families/SourceSansPro.json",
+    Roboto = "rbxasset://fonts/families/Roboto.json",
+    Montserrat = "rbxasset://fonts/families/Montserrat.json",
+    Nunito = "rbxasset://fonts/families/Nunito.json",
+    Ubuntu = "rbxasset://fonts/families/Ubuntu.json",
+    Arimo = "rbxasset://fonts/families/Arimo.json",
+    JosefinSans = "rbxasset://fonts/families/JosefinSans.json",
+    TitilliumWeb = "rbxasset://fonts/families/TitilliumWeb.json",
+    Oswald = "rbxasset://fonts/families/Oswald.json",
+    Jura = "rbxasset://fonts/families/Jura.json",
+    Michroma = "rbxasset://fonts/families/Michroma.json",
+    FredokaOne = "rbxasset://fonts/families/FredokaOne.json",
+    Code = "rbxasset://fonts/families/Inconsolata.json",
+    RobotoMono = "rbxasset://fonts/families/RobotoMono.json",
+}
+local darkSheen = ColorSequence.new(Color3.new(1, 1, 1), Color3.fromRGB(220, 213, 239))
+local lightSheen = ColorSequence.new(Color3.new(1, 1, 1), Color3.fromRGB(244, 243, 248))
+local glassRimColor = Color3.fromRGB(232, 225, 255)
+-- Halo glow: concentric translucent rounded frames, densest at the element's edge and fading out.
+-- Built from frames rather than a blurred image so it stays soft at any size and needs no asset.
+-- More, fainter rings give a smoother falloff; together they peak at roughly 24% opacity.
+local haloAlpha = { 0.02, 0.03, 0.04, 0.05, 0.06, 0.07 }
+
+local Players = game:GetService("Players")
+local UserInputService = game:GetService("UserInputService")
+local TweenService = game:GetService("TweenService")
+local HttpService = game:GetService("HttpService")
+local shortKeyNames = {
+    LeftControl = "Ctrl",
+    RightControl = "Ctrl",
+    LeftShift = "Shft",
+    RightShift = "Shft",
+    LeftAlt = "Alt",
+    RightAlt = "Alt",
+    CapsLock = "Caps",
+    Return = "Ent",
+    Backspace = "Bksp",
+    Delete = "Del",
+    Insert = "Ins",
+    PageUp = "PgU",
+    PageDown = "PgD",
+    Space = "Spc",
+}
+local toastGlowSpread = 16
+local notificationAnchors = {
+    TopLeft = Vector2.new(0, 0),
+    Top = Vector2.new(0.5, 0),
+    TopRight = Vector2.new(1, 0),
+    BottomLeft = Vector2.new(0, 1),
+    Bottom = Vector2.new(0.5, 1),
+    BottomRight = Vector2.new(1, 1),
+}
+local modifierKeys = {
+    Ctrl = { Enum.KeyCode.LeftControl, Enum.KeyCode.RightControl },
+    Shift = { Enum.KeyCode.LeftShift, Enum.KeyCode.RightShift },
+    Alt = { Enum.KeyCode.LeftAlt, Enum.KeyCode.RightAlt },
+}
+
 function Library:CreateWindow(config)
     config = config or {}
     assert(type(config) == "table", "CreateWindow expects an options table")
@@ -271,10 +351,6 @@ function Library:CreateWindow(config)
         assert(resolveKeyCode(config.MenuKey), "Invalid menu key")
     end
     if self.Window then self.Window:Destroy() end
-    local Players = game:GetService("Players")
-    local UserInputService = game:GetService("UserInputService")
-    local TweenService = game:GetService("TweenService")
-    local HttpService = game:GetService("HttpService")
     -- Flattened CanvasGroup textures can exceed the mobile client's texture budget.
     -- Keep touch clients on ordinary Frames; desktop can retain grouped fades.
     local useCanvasGroups = config.CanvasGroups == nil and not UserInputService.TouchEnabled
@@ -308,18 +384,6 @@ function Library:CreateWindow(config)
         Hover = Color3.fromRGB(55, 56, 59),
         Pressed = Color3.fromRGB(88, 89, 92),
     }
-    local function luminance(color)
-        local function linear(c) return c <= 0.04045 and c / 12.92 or ((c + 0.055) / 1.055) ^ 2.4 end
-        return 0.2126 * linear(color.R) + 0.7152 * linear(color.G) + 0.0722 * linear(color.B)
-    end
-    local function contrast(a, b)
-        local x, y = luminance(a), luminance(b)
-        return (math.max(x, y) + 0.05) / (math.min(x, y) + 0.05)
-    end
-    local function contrastingText(background)
-        local light, dark = Color3.fromRGB(245, 246, 250), Color3.fromRGB(15, 16, 20)
-        return contrast(light, background) >= contrast(dark, background) and light or dark
-    end
     local function refreshContrastColors()
         Theme.OnAccent = contrastingText(Theme.Accent)
         Theme.SelectedText = contrast(Theme.Accent, Theme.Selected) >= 4.5 and Theme.Accent
@@ -343,30 +407,6 @@ function Library:CreateWindow(config)
     end
     local fontBindings = {}
     local fontName = "BuilderSans"
-    -- Font name -> Roblox font family. Families carry their own weights, so medium text (titles, buttons)
-    -- stays medium in every font; a family without that weight falls back to its nearest one.
-    local fontOrder = {
-        "BuilderSans", "Gotham", "SourceSans", "Roboto", "Montserrat", "Nunito", "Ubuntu", "Arimo",
-        "JosefinSans", "TitilliumWeb", "Oswald", "Jura", "Michroma", "FredokaOne", "Code", "RobotoMono",
-    }
-    local fontChoices = {
-        BuilderSans = "rbxasset://fonts/families/BuilderSans.json",
-        Gotham = "rbxasset://fonts/families/GothamSSm.json",
-        SourceSans = "rbxasset://fonts/families/SourceSansPro.json",
-        Roboto = "rbxasset://fonts/families/Roboto.json",
-        Montserrat = "rbxasset://fonts/families/Montserrat.json",
-        Nunito = "rbxasset://fonts/families/Nunito.json",
-        Ubuntu = "rbxasset://fonts/families/Ubuntu.json",
-        Arimo = "rbxasset://fonts/families/Arimo.json",
-        JosefinSans = "rbxasset://fonts/families/JosefinSans.json",
-        TitilliumWeb = "rbxasset://fonts/families/TitilliumWeb.json",
-        Oswald = "rbxasset://fonts/families/Oswald.json",
-        Jura = "rbxasset://fonts/families/Jura.json",
-        Michroma = "rbxasset://fonts/families/Michroma.json",
-        FredokaOne = "rbxasset://fonts/families/FredokaOne.json",
-        Code = "rbxasset://fonts/families/Inconsolata.json",
-        RobotoMono = "rbxasset://fonts/families/RobotoMono.json",
-    }
     local function setUIFont(object, medium)
         if fontBindings[object] == nil then object.Destroying:Connect(function() fontBindings[object] = nil end) end
         fontBindings[object] = medium == true
@@ -421,13 +461,6 @@ function Library:CreateWindow(config)
     -- background read as a dirty purple-grey wash, so the sheen goes neutral and the surface goes near-opaque.
     local glassSurfaces = setmetatable({}, { __mode = "k" })
     local glassOpacityFactor = 1
-    local darkSheen = ColorSequence.new(Color3.new(1, 1, 1), Color3.fromRGB(220, 213, 239))
-    local lightSheen = ColorSequence.new(Color3.new(1, 1, 1), Color3.fromRGB(244, 243, 248))
-    local glassRimColor = Color3.fromRGB(232, 225, 255)
-    -- Halo glow: concentric translucent rounded frames, densest at the element's edge and fading out.
-    -- Built from frames rather than a blurred image so it stays soft at any size and needs no asset.
-    -- More, fainter rings give a smoother falloff; together they peak at roughly 24% opacity.
-    local haloAlpha = { 0.02, 0.03, 0.04, 0.05, 0.06, 0.07 }
     local glowFactor = 1
     local function buildHalo(parent, spread, radius)
         local halo = Instance.new("Frame")
@@ -784,22 +817,6 @@ function Library:CreateWindow(config)
     end
     -- control -> creation index, so the keybind menu lists toggles in the order they were made.
     local keybindControls = {}
-    local shortKeyNames = {
-        LeftControl = "Ctrl",
-        RightControl = "Ctrl",
-        LeftShift = "Shft",
-        RightShift = "Shft",
-        LeftAlt = "Alt",
-        RightAlt = "Alt",
-        CapsLock = "Caps",
-        Return = "Ent",
-        Backspace = "Bksp",
-        Delete = "Del",
-        Insert = "Ins",
-        PageUp = "PgU",
-        PageDown = "PgD",
-        Space = "Spc",
-    }
     local capturingKeybind
     local closeDropdown
     local menuKeybind
@@ -1004,7 +1021,6 @@ function Library:CreateWindow(config)
     -- Each toast sits in a padded holder that also contains its glow, inside a slot whose height is the
     -- card plus the gap. The holder overhangs its slot, so the glow padding never adds to the gap, and
     -- the slot's height is animated so the rest of the stack glides instead of jumping.
-    local toastGlowSpread = 16
     local toastStack = Instance.new("Frame")
     toastStack.Name = "Notifications"
     toastStack.Size = UDim2.fromScale(1, 1)
@@ -1018,14 +1034,6 @@ function Library:CreateWindow(config)
     toastLayout.SortOrder = Enum.SortOrder.LayoutOrder
     toastLayout.Parent = toastStack
     local toasts, toastOrder = {}, 0
-    local notificationAnchors = {
-        TopLeft = Vector2.new(0, 0),
-        Top = Vector2.new(0.5, 0),
-        TopRight = Vector2.new(1, 0),
-        BottomLeft = Vector2.new(0, 1),
-        Bottom = Vector2.new(0.5, 1),
-        BottomRight = Vector2.new(1, 1),
-    }
     local notificationPosition = "BottomRight"
     local function toastLayoutOrder(order)
         -- Newest toast sits closest to the screen edge it is anchored to.
@@ -1242,11 +1250,6 @@ function Library:CreateWindow(config)
         end
         return object == screen and screen.Enabled
     end
-    local modifierKeys = {
-        Ctrl = { Enum.KeyCode.LeftControl, Enum.KeyCode.RightControl },
-        Shift = { Enum.KeyCode.LeftShift, Enum.KeyCode.RightShift },
-        Alt = { Enum.KeyCode.LeftAlt, Enum.KeyCode.RightAlt },
-    }
     local function heldModifiers()
         local result = {}
         for name, keys in pairs(modifierKeys) do
