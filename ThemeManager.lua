@@ -44,8 +44,6 @@ local function newManager()
             for role, value in pairs(data) do
                 full[role] = Color3.fromHex(value)
             end
-            -- A preset that keeps the default (white) accent on a light card would hide icons, checks and
-            -- swatches; fall back to the text color there.
             if not data.Accent then
                 local function luminance(color) return 0.2126 * color.R + 0.7152 * color.G + 0.0722 * color.B end
                 if math.abs(luminance(full.Accent) - luminance(full.Card)) < 0.35 then full.Accent = full.Text end
@@ -57,7 +55,6 @@ local function newManager()
             full.Icon = full.Accent
             full.Hover = full.Card:Lerp(full.Accent, 0.16)
             full.Pressed = full.Card:Lerp(full.Accent, 0.3)
-            -- Presets are colors only; the chosen font stays.
             full.Font = context.GetFont()
             full.BackgroundImage = ""
             local ok, err = self:ApplyThemeData(full)
@@ -127,7 +124,6 @@ local function newManager()
         bound().Theme:SyncPreset(name)
     end
     function ThemeManager:ApplyToTab(tab)
-        -- One card for everything visual: presets and font, colors, interface layout, and saved themes.
         local group = tab:AddGroup({ Name = "Appearance", Side = "Right", Icon = "palette" })
         local theme = group:AddTab("Theme")
         local colors = group:AddTab("Colors")
@@ -214,7 +210,7 @@ local function newManager()
             self.ColorControls[role] = colors:AddColorPicker({
                 Name = role,
                 Default = Theme[role],
-                Alpha = false, -- theme colors are always opaque
+                Alpha = false,
                 NoSave = true,
                 Callback = function(color) self:ApplyThemeData({ [role] = color }, true) end,
             })
@@ -226,8 +222,6 @@ local function newManager()
                 self:GetContrastRatio()
             )
         )
-        -- Saved themes: type a name and press Enter (or Save). Overwriting asks first. Set default and Delete
-        -- act on the typed name, or the current theme when the box is empty.
         local nameBox = saved:AddTextbox({ Name = "Name", Placeholder = "My theme", NoSave = true })
         local function refreshList()
             local values, err = names()

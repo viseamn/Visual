@@ -56,9 +56,6 @@ local function newManager()
     end
     function SaveManager:SaveJSON() return HttpService:JSONEncode(snapshot(self)) end
 
-    -- Auto save: once a second, write the current settings to the active config when they differ from what
-    -- was last written or loaded. The active config is the one last loaded, created or saved ("autosave" if
-    -- none), never merely the one highlighted in the list, so browsing configs cannot overwrite them.
     local function same(a, b)
         if type(a) ~= type(b) then return false end
         if type(a) ~= "table" then return a == b end
@@ -106,7 +103,6 @@ local function newManager()
         if enabled and not autoSaveRunning then
             autoSaveRunning = true
             task.spawn(function()
-                -- Wait first, so a setup script can still load its autoload config before anything is written.
                 while true do
                     task.wait(self.AutoSaveInterval)
                     if not (self.AutoSave and context and context.IsAlive()) then break end
@@ -219,7 +215,6 @@ local function newManager()
         local ok, content = readJSON(self, "configs", name)
         if not ok then return false, content end
         local loaded, err = self:LoadJSON(content)
-        -- Even when only a callback failed the values are in place, so auto save continues into this config.
         if loaded or (err and err:find("^Values loaded")) then markActive(self, name) end
         return loaded, err
     end
@@ -277,7 +272,6 @@ local function newManager()
         local selector = files:AddDropdown({ Name = "Config", Options = configNames(), NoSave = true })
         local autoloadToggle
         local refreshing = false
-        -- Re-reads the list after every file change; the selection follows the config being saved to.
         local function refresh(select)
             if refreshing then return end
             refreshing = true
@@ -341,7 +335,6 @@ local function newManager()
                 },
             },
         })
-        -- Type a name and press Enter to create a config from the current settings.
         local nameBox = files:AddTextbox({ Name = "New config", Placeholder = "Name, then Enter", NoSave = true })
         nameBox.FocusLost:Connect(function(enterPressed)
             local name = nameBox.Text:match("^%s*(.-)%s*$")
@@ -379,7 +372,6 @@ local function newManager()
         })
         selector:OnChanged(function() refresh() end)
 
-        -- Auto save replaces manual saving: the Save button and the new-config field are hidden while it is on.
         local row = loadButton.Parent
         local function arrange(buttons)
             local count = #buttons
@@ -407,7 +399,6 @@ local function newManager()
             group:SetControlDisabled(autoSaveToggle, true)
             group:SetControlDisabled(autoloadToggle, true)
         end
-        -- Restore the auto save choice from the last session.
         if savedAutoSave(self) then self:SetAutoSave(true) else applyAutoSaveState(self.AutoSave) end
 
         local jsonBox = transfer:AddTextbox({

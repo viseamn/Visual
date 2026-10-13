@@ -1,4 +1,3 @@
--- Viz 1.0.3
 local Library = { Version = "1.0.3" }
 local function safeName(name)
     return type(name) == "string" and #name > 0 and #name <= 64 and name:match("^[%w _%-]+$") and name:match("%S")
@@ -74,12 +73,10 @@ Library._Storage = {
     Delete = deleteJSON,
 }
 
--- Layout style -> the screen edge the tab bar docks to.
 local layoutEdges = { ["Bottom bar"] = "Bottom", ["Top bar"] = "Top", ["Left bar"] = "Left", ["Right bar"] = "Right" }
 local layoutStyles = { "Bottom bar", "Top bar", "Left bar", "Right bar" }
 local dpiScales = { "50%", "75%", "100%", "125%", "150%", "175%", "200%" }
 
--- Look up names without indexing an Enum with an unknown member (which throws).
 local keyCodes = {}
 for _, key in ipairs(Enum.KeyCode:GetEnumItems()) do keyCodes[key.Name] = key end
 local function resolveKeyCode(value)
@@ -88,7 +85,6 @@ local function resolveKeyCode(value)
     return nil
 end
 
--- Keep failures isolated only at callback boundaries where cleanup must continue.
 local function warnOnError(callback, ...)
     local ok, err = pcall(callback, ...)
     if not ok then warn(err) end
@@ -98,7 +94,6 @@ local function playerThumbnail(players, userId)
     return pcall(players.GetUserThumbnailAsync, players, userId, Enum.ThumbnailType.HeadShot, Enum.ThumbnailSize.Size100x100)
 end
 
--- Obsidian-compatible feature adapters. See THIRD_PARTY_NOTICES.md.
 local function featureSignal()
     local listeners = {}
     local signal = {}
@@ -168,8 +163,6 @@ local function dependenciesMatch(dependencies)
     return true
 end
 
--- Icons render from the Lucide icon font (lucide-roblox-direct GetFontAsset), which stays sharp at any
--- size. Without getcustomasset, or if the download fails, they fall back to this built-in sprite atlas.
 Library.LucideSource = "https://raw.githubusercontent.com/notpoiu/lucide-roblox-direct/main/source.lua"
 local iconAtlas = {
     ["house"] = { 325, 675 },
@@ -191,7 +184,7 @@ local iconAtlas = {
     ["copy"] = { 775, 0 },
     ["arrow-left-right"] = { 50, 225 },
 }
-local lucide -- nil = not loaded yet, false = unavailable
+local lucide
 local function lucideIcon(name)
     if lucide == nil then
         lucide = false
@@ -204,9 +197,6 @@ local function lucideIcon(name)
     local ok, asset = pcall(lucide.GetFontAsset, name)
     return ok and type(asset) == "table" and asset.FontFace and asset or nil
 end
--- Points an icon (an ImageLabel from `icon`) at a Lucide name. With the font, a TextLabel child draws the
--- glyph and mirrors the ImageLabel's colour and transparency, so callers keep tweening ImageColor3 and
--- ImageTransparency either way.
 local function setIcon(image, name)
     local asset = lucideIcon(name)
     local glyph = image:FindFirstChild("IconGlyph")
@@ -240,11 +230,8 @@ local function setIcon(image, name)
     glyph.Text = asset.Text
 end
 
--- Lives outside CreateWindow: that function sits at Luau's 200-local limit when compiled without
--- optimizations (as many executors do), so it cannot take another local.
 local keybindCreated = 0
 
--- Theme helpers and constants shared by every window (kept out of CreateWindow, which is near Luau's 200-local limit).
 local function luminance(color)
     local function linear(c) return c <= 0.04045 and c / 12.92 or ((c + 0.055) / 1.055) ^ 2.4 end
     return 0.2126 * linear(color.R) + 0.7152 * linear(color.G) + 0.0722 * linear(color.B)
@@ -257,8 +244,6 @@ local function contrastingText(background)
     local light, dark = Color3.fromRGB(245, 246, 250), Color3.fromRGB(15, 16, 20)
     return contrast(light, background) >= contrast(dark, background) and light or dark
 end
--- Font name -> Roblox font family. Families carry their own weights, so medium text (titles, buttons)
--- stays medium in every font; a family without that weight falls back to its nearest one.
 local fontOrder = {
     "BuilderSans", "Gotham", "SourceSans", "Roboto", "Montserrat", "Nunito", "Ubuntu", "Arimo",
     "JosefinSans", "TitilliumWeb", "Oswald", "Jura", "Michroma", "FredokaOne", "Code", "RobotoMono",
@@ -284,9 +269,6 @@ local fontChoices = {
 local darkSheen = ColorSequence.new(Color3.new(1, 1, 1), Color3.fromRGB(220, 213, 239))
 local lightSheen = ColorSequence.new(Color3.new(1, 1, 1), Color3.fromRGB(244, 243, 248))
 local glassRimColor = Color3.fromRGB(232, 225, 255)
--- Halo glow: concentric translucent rounded frames, densest at the element's edge and fading out.
--- Built from frames rather than a blurred image so it stays soft at any size and needs no asset.
--- More, fainter rings give a smoother falloff; together they peak at roughly 24% opacity.
 local haloAlpha = { 0.02, 0.03, 0.04, 0.05, 0.06, 0.07 }
 
 local Players = game:GetService("Players")
@@ -351,8 +333,6 @@ function Library:CreateWindow(config)
         assert(resolveKeyCode(config.MenuKey), "Invalid menu key")
     end
     if self.Window then self.Window:Destroy() end
-    -- Flattened CanvasGroup textures can exceed the mobile client's texture budget.
-    -- Keep touch clients on ordinary Frames; desktop can retain grouped fades.
     local useCanvasGroups = config.CanvasGroups == nil and not UserInputService.TouchEnabled
         or config.CanvasGroups == true
     local function newUI(className)
@@ -427,11 +407,9 @@ function Library:CreateWindow(config)
     local screen = Instance.new("ScreenGui")
     screen.Name = "Viz"
     screen.ResetOnSpawn = false
-    -- Full screen: no top-bar inset and no device safe-area padding.
     screen.IgnoreGuiInset = true
     screen.ScreenInsets = Enum.ScreenInsets.None
     screen.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
-    -- Highest DisplayOrder so the game's own ScreenGuis never draw over the library.
     screen.DisplayOrder = 2147483647
     screen.Parent = playerGui
 
@@ -457,8 +435,6 @@ function Library:CreateWindow(config)
         return object
     end
 
-    -- Glass is tuned per theme brightness: on light themes a lavender multiply and a see-through
-    -- background read as a dirty purple-grey wash, so the sheen goes neutral and the surface goes near-opaque.
     local glassSurfaces = setmetatable({}, { __mode = "k" })
     local glassOpacityFactor = 1
     local glowFactor = 1
@@ -509,15 +485,12 @@ function Library:CreateWindow(config)
                 end
                 if info.Rim then
                     info.Rim.Color = light and Theme.Border or glassRimColor
-                    -- Only rims glassSurface made itself have a fixed transparency; others are animated.
                     if info.OwnRim then info.Rim.Transparency = light and 0.15 or 0.78 end
                 end
             end
         end
     end
 
-    -- Element glows live in a layer drawn beneath the content, outside the row/content CanvasGroups that
-    -- would otherwise clip them. Each frame they are re-placed under their element and faded with it.
     local liveGlows = {}
     local function attachGlow(layer, element, options)
         local spread = options.Spread or 8
@@ -560,8 +533,6 @@ function Library:CreateWindow(config)
                     end
                     object = object.Parent
                 end
-                -- Only write what changed: most glows sit still, and rewriting every ring each frame keeps
-                -- the engine re-rendering (and re-rasterizing any CanvasGroup above) for nothing.
                 if strength <= 0.002 then
                     if record.Shown ~= false then
                         record.Shown = false
@@ -606,7 +577,6 @@ function Library:CreateWindow(config)
         local info = { Transparency = transparency, Sheen = sheen }
         glassSurfaces[object] = info
         local rim = existingStroke or Instance.new("UIStroke")
-        -- Rims in the fixed glass white vanish on light themes; refreshGlass swaps them to the border color.
         if not existingStroke or rim.Color == glassRimColor then
             info.Rim, info.OwnRim = rim, not existingStroke
         end
@@ -674,9 +644,6 @@ function Library:CreateWindow(config)
     local refreshDockLayout = function() end
     local scale = Instance.new("UIScale")
     scale.Parent = root
-    -- The real screen in GUI-area coordinates. The ScreenGui ignores Roblox's insets, so this is normally the
-    -- area itself; kept in case an executor or parent re-applies an inset.
-    -- Returns the top-left (zero or negative) and bottom-right corners.
     local function screenBounds()
         local area = viewport.AbsoluteSize
         local camera = workspace.CurrentCamera
@@ -687,8 +654,6 @@ function Library:CreateWindow(config)
         local left = math.clamp(inset.X, 0, total.X)
         return Vector2.new(-left, -top), area + Vector2.new(total.X - left, total.Y - top)
     end
-    -- Clamps the window's anchor point. The window may hang past the left, right and bottom edges, but a
-    -- strip of it (and the whole header, from the top edge) always stays on screen to grab.
     local function clampWindow(position)
         local low, high = screenBounds()
         local size = Vector2.new(root.Size.X.Offset, root.Size.Y.Offset) * scale.Scale
@@ -703,7 +668,6 @@ function Library:CreateWindow(config)
     end
     local function resize()
         local size = viewport.AbsoluteSize
-        -- DPI scale (root attribute, see window:SetDPIScale), shrunk further if the window would not fit.
         scale.Scale = math.max(0.01, math.min(
             root:GetAttribute("DPIScale") or 1,
             (size.X - 32) / root.Size.X.Offset,
@@ -815,7 +779,6 @@ function Library:CreateWindow(config)
         activeColorDrag = nil
         if previous and previous.Release then previous.Release() end
     end
-    -- control -> creation index, so the keybind menu lists toggles in the order they were made.
     local keybindControls = {}
     local capturingKeybind
     local closeDropdown
@@ -831,8 +794,6 @@ function Library:CreateWindow(config)
     track(game:GetService("RunService").RenderStepped:Connect(stepGlows))
     local dockGlowLayer, dockGlowFactor
     local dragStarts = setmetatable({}, { __mode = "k" })
-    -- Eases a whole-pixel value toward a target. UDim offsets are integers, so a plain lerp can stall a
-    -- pixel short (the step rounds back to where it was); this always advances at least one pixel.
     local function approachPixel(current, target, alpha)
         local nextValue = current + (target - current) * alpha
         if math.abs(target - nextValue) < 1 then return target end
@@ -849,12 +810,8 @@ function Library:CreateWindow(config)
     end
     local function findDragStart(objects, boundary, bindings)
         for _, hit in ipairs(objects) do
-            -- Decorative layers (glows) are skipped outright: the card glow layer lives under the
-            -- title, so resolving its bindings would let a click beside a control start a card drag.
             if hit:GetAttribute("PassInput") then continue end
             if not hit:IsDescendantOf(boundary) then
-                -- Overlays from the game's own UI (or other ScreenGuis) often cover the whole screen.
-                -- Like Roblox itself, only let buttons, text boxes and Active objects swallow the press.
                 if hit:IsA("GuiButton") or hit:IsA("TextBox") or hit.Active then return end
                 continue
             end
@@ -866,9 +823,6 @@ function Library:CreateWindow(config)
             if not passesInput(hit) then return end
         end
     end
-    -- Returns whether a press on `hit` may drag the window, whether that drag must wait for a long press,
-    -- and the scrolling frame it landed in. On touch, a swipe over a scrollable column must scroll and
-    -- a quick tap on a card must reach its controls, so both only drag after the finger is held still.
     local function windowDragAllowed(hit, window, touch)
         local needsHold, scroller = false, nil
         while hit and hit ~= window do
@@ -974,7 +928,6 @@ function Library:CreateWindow(config)
         local baseRole = type(baseColor) == "string" and baseColor or nil
         button.MouseEnter:Connect(function()
             hovering = true
-            -- Roblox still sends MouseEnter to buttons under an open popup; don't light those up.
             local popup = openDropdown and openDropdown.Options
             if popup and popup.Visible and not button:IsDescendantOf(popup) then
                 local mouse = UserInputService:GetMouseLocation() - game:GetService("GuiService"):GetGuiInset()
@@ -1018,9 +971,6 @@ function Library:CreateWindow(config)
         object.Parent = parent
         return object
     end
-    -- Each toast sits in a padded holder that also contains its glow, inside a slot whose height is the
-    -- card plus the gap. The holder overhangs its slot, so the glow padding never adds to the gap, and
-    -- the slot's height is animated so the rest of the stack glides instead of jumping.
     local toastStack = Instance.new("Frame")
     toastStack.Name = "Notifications"
     toastStack.Size = UDim2.fromScale(1, 1)
@@ -1036,14 +986,12 @@ function Library:CreateWindow(config)
     local toasts, toastOrder = {}, 0
     local notificationPosition = "BottomRight"
     local function toastLayoutOrder(order)
-        -- Newest toast sits closest to the screen edge it is anchored to.
         return notificationAnchors[notificationPosition].Y == 0 and -order or order
     end
     local function setNotificationPosition(position)
         local anchor = notificationAnchors[position]
         assert(anchor, "Notification position must be TopLeft, Top, TopRight, BottomLeft, Bottom or BottomRight")
         notificationPosition = position
-        -- A centred stack on the same edge as the dock would sit on the bar, so push it clear.
         local lift = 0
         if position == "Bottom" and dockEdge == "Bottom" then lift = -78 end
         toastStack.AnchorPoint = anchor
@@ -1078,8 +1026,6 @@ function Library:CreateWindow(config)
             or contentText
             or "Notification"
 
-        -- The holder is sized by hand from the card. Letting it auto-size would include the glow, which
-        -- is sized from the holder, and the two would inflate each other every frame.
         local slot = Instance.new("Frame")
         slot.Name = "Notification"
         slot.BackgroundTransparency = 1
@@ -1088,7 +1034,6 @@ function Library:CreateWindow(config)
         slot.LayoutOrder = toastLayoutOrder(toastOrder)
         slot:SetAttribute("PassInput", true)
         slot.Parent = toastStack
-        -- 0..1 share of the slot's full height; tweened on entry and exit.
         local reveal = Instance.new("NumberValue")
         reveal.Value = 0
         reveal.Parent = slot
@@ -1106,7 +1051,6 @@ function Library:CreateWindow(config)
         glow.Size = UDim2.fromScale(1, 1)
         paintHalo(glowRings, Theme.Accent, 0.45)
 
-        -- The holder hugs the screen edge the stack is anchored to and slides in from it.
         local function restingPosition()
             return UDim2.fromScale(0, notificationAnchors[notificationPosition].Y)
         end
@@ -1181,7 +1125,6 @@ function Library:CreateWindow(config)
         close.Size = UDim2.fromScale(1, 1)
         close.ZIndex = 2
         close.Parent = card
-        -- Inset from the rounded corners, since a plain Frame does not clip to its UICorner.
         local progress = rounded("Frame", "Lifetime", card, 0, 0, 0, 2, "Accent", 1)
         progress.AnchorPoint = Vector2.new(0, 1)
         progress.Position = UDim2.new(0, 12, 1, -1)
@@ -1193,7 +1136,6 @@ function Library:CreateWindow(config)
             { Size = UDim2.new(0, 0, 0, 2) }
         )
         timer:Play()
-        -- Open the slot first so the stack makes room, while the card slides and fades in from the edge.
         holder.Position = hiddenPosition()
         local entrance = {
             tween(reveal, { Value = 1 }, 0.32),
@@ -1221,7 +1163,6 @@ function Library:CreateWindow(config)
                 slot:Destroy()
                 return
             end
-            -- Slide back out toward the edge, then close the gap once the card is mostly gone.
             tween(holder, { Position = hiddenPosition(), GroupTransparency = 1 }, 0.28)
             motion(cardScale, { Scale = 0.96 }, 0.28)
             task.delay(animationDuration(0.1), function()
@@ -1258,8 +1199,6 @@ function Library:CreateWindow(config)
         return result
     end
     local function releaseHolds(silent, destroying)
-        -- Callbacks may remove other controls; iterate a snapshot and keep releasing
-        -- even if one user callback fails during cleanup.
         local pending = {}
         for control in pairs(keybindControls) do
             pending[#pending + 1] = control
@@ -1540,7 +1479,6 @@ function Library:CreateWindow(config)
         border.Transparency = 1
         border.Parent = panel
         local panelTuck = -6
-        -- Swallows presses and hover on the panel's padding so they never reach the rows underneath.
         local panelBlocker = rounded("TextButton", "InputBlocker", panel, 0, 0, 0, 0, "Background", 8)
         panelBlocker.Size = UDim2.fromScale(1, 1)
         panelBlocker.BackgroundTransparency = 1
@@ -1687,8 +1625,6 @@ function Library:CreateWindow(config)
         end
         function picker:Set(color, transparency, silent)
             assert(typeof(color) == "Color3", "Color picker expects Color3")
-            -- Writing back the color we already show must not move the thumbs: grey has no hue and black
-            -- has no saturation, so a round trip through HSV would snap them while dragging.
             if color ~= self.Value then
                 local nextHue, nextSaturation, nextBrightness = color:ToHSV()
                 if nextSaturation > 0 and nextBrightness > 0 then hue = nextHue end
@@ -1785,7 +1721,6 @@ function Library:CreateWindow(config)
                 motion(border, { Transparency = 1 }, 0, true)
                 finish()
             else
-                -- The UIStroke on the CanvasGroup is not faded by GroupTransparency, so fade it separately.
                 local rest = panel.Position
                 self.Animation = tween(panel, {
                     GroupTransparency = 1,
@@ -1944,8 +1879,6 @@ function Library:CreateWindow(config)
         return true
     end
 
-    -- Tooltip: a small card sized to its text, wrapping only past maxWidth. It fades in with a 4px rise
-    -- after a short hover and follows the pointer.
     local tooltip = { Owner = nil, Token = 0, Ready = false, Rise = 0 }
     do
         local maxWidth, padX, padY = 240, 10, 6
@@ -1968,7 +1901,6 @@ function Library:CreateWindow(config)
             text.ZIndex = 241
             tooltip.Frame, tooltip.Stroke, tooltip.Label = frame, stroke, text
         end
-        -- Text bounds in the current UI font; GetTextBoundsAsync can yield, so it runs in the show delay.
         local function measure(message, width)
             local ok, bounds = pcall(function()
                 local params = Instance.new("GetTextBoundsParams")
@@ -2031,7 +1963,6 @@ function Library:CreateWindow(config)
     end
     track(game:GetService("RunService").RenderStepped:Connect(function(dt)
         if not tooltip.Owner then return end
-        -- MouseLocation includes Roblox's top bar; AbsolutePosition uses GUI coordinates.
         local mouse = UserInputService:GetMouseLocation() - game:GetService("GuiService"):GetGuiInset()
         local ownerPosition, ownerSize = tooltip.Owner.AbsolutePosition, tooltip.Owner.AbsoluteSize
         if mouse.X < ownerPosition.X or mouse.Y < ownerPosition.Y
@@ -2126,8 +2057,6 @@ function Library:CreateWindow(config)
         groupContent.LayoutOrder = 1
         groupContent.ZIndex = 2
         groupContent.Parent = frame
-        -- Control glows hang off the title (a plain, unclipped button) so only the card itself clips them,
-        -- and draw beneath the content because the content is raised to ZIndex 2.
         local glowLayer = Instance.new("Frame")
         glowLayer.Name = "GlowLayer"
         glowLayer.BackgroundTransparency = 1
@@ -2199,8 +2128,6 @@ function Library:CreateWindow(config)
             end
         end
         innerLayout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
-            -- While the window scales in or out, the content size changes every frame only because of the
-            -- scale (and pixel rounding at small scales makes the height wobble). Re-sync once it settles.
             if windowTransitioning and not detachedHost then return end
             resizeGroup(false)
         end)
@@ -2454,10 +2381,8 @@ function Library:CreateWindow(config)
             local container = row(options.Name or "Keybind", 28)
             local text = label(container, options.Name or "Keybind")
             text.Size = UDim2.new(1, -32, 1, 0)
-            -- A key chip flush with the row's right edge, like the other right-hand controls, sized to its label.
             local button = rounded("TextButton", "Keybind", container, 0, 3, 24, 22, "Search", 6)
             button.AnchorPoint = Vector2.new(1, 0)
-            -- 1px in from the edge: the border is drawn outside the chip, and rows clip at their right edge.
             button.Position = UDim2.new(1, -1, 0, 3)
             button.TextSize = 11
             setUIFont(button, true)
@@ -2539,7 +2464,6 @@ function Library:CreateWindow(config)
         end
         function group:AddDivider(options)
             options = type(options) == "string" and { Text = options } or (options or {})
-            -- The line sits mid-row, so with the 6px list padding it has the same 12px clearance above and below.
             local container = row("Divider", options.Text and 30 or 13)
             local line = rounded("Frame", "Line", container, 0, 6, 0, 1, "Border", 0)
             line.Size = UDim2.new(1, 0, 0, 1)
@@ -2559,7 +2483,6 @@ function Library:CreateWindow(config)
             text.Size = UDim2.new(1, -30, 1, 0)
             text.TextTruncate = Enum.TextTruncate.AtEnd
             local button = rounded("TextButton", "Checkbox", container, 0, 5, 18, 18, "Search", 4)
-            -- 1px in from the edge, like the keybind chip, so the border is not clipped by the row.
             button.Position = UDim2.new(1, -19, 0, 5)
             local stroke = Instance.new("UIStroke")
             stroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
@@ -2600,7 +2523,6 @@ function Library:CreateWindow(config)
             if type(text) == "table" then text = text.Text end
             local container = row(text or "Label", 0)
             container.AutomaticSize = Enum.AutomaticSize.Y
-            -- A single line fills a 28px row like every other control; wrapped text grows from there.
             local labelPadding = Instance.new("UIPadding")
             labelPadding.PaddingTop, labelPadding.PaddingBottom = UDim.new(0, 6), UDim.new(0, 6)
             labelPadding.Parent = container
@@ -2637,15 +2559,12 @@ function Library:CreateWindow(config)
             local text = label(container, options.Name or "Toggle")
             text.Size = UDim2.new(1, -128, 1, 0)
             text.TextTruncate = Enum.TextTruncate.AtEnd
-            -- Like Obsidian, a toggle is just a label and a switch. The bell only appears when Notify is
-            -- passed, and the key chip only once a key picker is attached (Keybind = ... or :AddKeyPicker).
             local showNotify = options.Notify ~= nil
             local bell = rounded("TextButton", "Notify", container, 0, 2, 24, 24, "Card", 6)
             bell.Position = UDim2.new(1, -120, 0, 2)
             bell.BackgroundTransparency = 1
             bell.Visible = showNotify
             local bellIcon = icon(bell, "bell", 5, 5, 14)
-            -- Same key chip as AddKeybind, so a toggle's key reads like every other keybind.
             local keyButton = rounded("TextButton", "Keybind", container, 0, 3, 24, 22, "Search", 6)
             keyButton.Position = UDim2.new(1, -90, 0, 3)
             setUIFont(keyButton, true)
@@ -2660,7 +2579,6 @@ function Library:CreateWindow(config)
             bindTheme(keyBorder, "Color", "Border")
             keyBorder.Parent = keyButton
             animateButton(keyButton, "Search")
-            -- Keybind popup: the mode (Toggle / Hold) on top, and a box below that listens for the next key.
             local bindMenu = rounded("CanvasGroup", "KeybindMenu", dropdownOverlay, 0, 0, 176, 74, "Card", 9)
             bindMenu.ZIndex = 2
             bindMenu.Visible = false
@@ -2671,8 +2589,6 @@ function Library:CreateWindow(config)
             bindTheme(bindBorder, "Color", "Border")
             bindBorder.Transparency = 1
             bindBorder.Parent = bindMenu
-            -- A full-size button behind the controls swallows presses on the popup's padding, which would
-            -- otherwise fall through to the rows underneath.
             local bindBlocker = rounded("TextButton", "InputBlocker", bindMenu, 0, 0, 0, 0, "Card", 9)
             bindBlocker.Size = UDim2.fromScale(1, 1)
             bindBlocker.BackgroundTransparency = 1
@@ -2756,7 +2672,6 @@ function Library:CreateWindow(config)
                     math.max(8, available.X - width * factor - 8)
                 )
                 y = math.clamp(y, 8, math.max(8, available.Y - height * factor - 8))
-                -- Grows out of the key button, like the dropdown menus.
                 bindTuck = (y < origin.Y and 6 or -6) * factor
                 bindMenu.Position = UDim2.fromOffset(x, y + bindTuck)
                 setGroupTransparency(bindMenu, 1)
@@ -2780,7 +2695,6 @@ function Library:CreateWindow(config)
                     motion(bindBorder, { Transparency = 1 }, 0, true)
                     finish()
                 else
-                    -- GroupTransparency does not fade the CanvasGroup's own UIStroke, so fade it separately.
                     local rest = bindMenu.Position
                     self.Animation = tween(bindMenu, {
                         GroupTransparency = 1,
@@ -2790,7 +2704,6 @@ function Library:CreateWindow(config)
                     task.delay(animationDuration(0.14), finish)
                 end
             end
-            -- The popup closes once a key (or Backspace to clear) has been taken.
             function control:OnKeyCaptured()
                 if openDropdown == bindPopup then closeDropdown() end
             end
@@ -2799,8 +2712,6 @@ function Library:CreateWindow(config)
                 local iconOnly = not listening and self.Keybind == Enum.KeyCode.Unknown
                 local keyName = self.Keybind == Enum.KeyCode.Unknown and "-" or self.Keybind.Name
                 keyButton.Text = iconOnly and "" or (listening and "..." or shortKeyNames[keyName] or keyName)
-                -- Right to left: switch (34), color swatch, then the key chip and bell when shown.
-                -- `edge` is the left edge of the last placed element, measured from the row's right side.
                 local edge, gap = 34 + self.ColorSpace, 8
                 keyButton.Visible = self.HasKeyPicker
                 if self.HasKeyPicker then
@@ -2843,7 +2754,7 @@ function Library:CreateWindow(config)
                 elementGlow(swatch, { Spread = 7, Radius = 4, Strength = 0.5 })
                 self.ColorPicker = createColorPicker(container, swatch, colorOptions)
                 persistColor(colorOptions, self.ColorPicker, container)
-                self.ColorSpace = 26 -- swatch (18) + 8px gap
+                self.ColorSpace = 26
                 self:RefreshKeybind()
                 trackControl(container, tab.Columns[side]:GetPropertyChangedSignal("CanvasPosition"):Connect(function()
                     if openDropdown == self.ColorPicker then closeDropdown(true) end
@@ -2857,15 +2768,12 @@ function Library:CreateWindow(config)
                     self:Set(false)
                 end
                 self.Keybind = key
-                -- Binding a real key from script counts as attaching a key picker.
                 if key ~= Enum.KeyCode.Unknown then self.HasKeyPicker = true end
                 for name, keys in pairs(modifierKeys) do
                     if table.find(keys, self.Keybind) then self.Modifiers[name] = nil end
                 end
                 self:RefreshKeybind()
             end
-            -- Obsidian-style: Toggles.X:AddKeyPicker("XKey", { Default = "F", Mode = "Hold", Text = "X" }).
-            -- The key always drives this toggle, the same as Obsidian's SyncToggleState = true.
             function control:AddKeyPicker(id, pickerOptions)
                 if type(id) == "table" then id, pickerOptions = nil, id end
                 pickerOptions = pickerOptions or {}
@@ -2881,7 +2789,6 @@ function Library:CreateWindow(config)
                 self:RefreshKeybind()
                 local picker = { Type = "KeyPicker", Toggle = self }
                 function picker:GetState() return control.Value end
-                -- { key, mode, modifiers }, as in Obsidian.
                 function picker:SetValue(value)
                     if value[2] then control:SetKeybindMode(value[2]) end
                     if value[3] then control:SetModifiers(value[3]) end
@@ -2980,7 +2887,6 @@ function Library:CreateWindow(config)
                 if not self.Holding then return end
                 self.Holding = false
                 if destroying then
-                    -- Teardown must notify the consumer without starting more UI animations.
                     self.Value = false
                     if not silent and options.Callback then options.Callback(false) end
                 else
@@ -2999,7 +2905,6 @@ function Library:CreateWindow(config)
                     if canInteract(container) then control:SetKeybindMode(mode) end
                 end)
             end
-            -- Click to listen; the next key (with Ctrl/Shift/Alt) is the bind. Escape cancels, Backspace clears.
             keyBox.Activated:Connect(function()
                 if not canInteract(container) then return end
                 local wasCapturing = capturingKeybind == control
@@ -3094,7 +2999,6 @@ function Library:CreateWindow(config)
                     control:SetKeybindMode(value.Mode or "Toggle", true)
                     control:SetModifiers(value.Modifiers)
                     control:Set(value.Value, true)
-                    -- A config can't add buttons the script didn't ask for.
                     control:SetKeybind(control.HasKeyPicker and value.Keybind or Enum.KeyCode.Unknown)
                     control:SetNotify(showNotify and value.Notify)
                 end,
@@ -3125,8 +3029,6 @@ function Library:CreateWindow(config)
             if options.ColorPicker then control:AddColorPicker(options.ColorPicker) end
             return control
         end
-        -- `Buttons = {{Name = ..., Callback = ...}, ...}` adds more buttons to the same row, split evenly with
-        -- the 6px list gap between them. The first button is returned; the rest are its row's siblings.
         function group:AddButton(options)
             options = options or {}
             local items, names = { options }, { options.Name or "Button" }
@@ -3189,8 +3091,6 @@ function Library:CreateWindow(config)
             end
             local hit = rounded("TextButton", "TrackHit", container, 0, 0, 0, 28, "Card", 0)
             hit.Position = UDim2.new(trackStart, 0, 0, 0)
-            -- Reserve room for the thumb at its maximum pressed scale (16 * 1.18 / 2).
-            -- Rows are CanvasGroups, so even a subpixel overflow is clipped at the right edge.
             hit.Size = UDim2.new(1 - trackStart, -12, 1, 0)
             hit.BackgroundTransparency = 1
             local trackFrame = rounded("Frame", "Track", hit, 0, 10, 0, 8, "Navigation", 4)
@@ -3212,8 +3112,6 @@ function Library:CreateWindow(config)
             local lowKnob = isRange and thumb("LowKnob") or nil
             local highKnob = thumb(isRange and "HighKnob" or "Knob")
             local control = {}
-            -- The fill and thumbs glide toward a goal (as track fractions) every frame instead of restarting a
-            -- tween on each mouse move, so dragging stays smooth even with coarse steps.
             local shown, goal, animator = { 0, 0 }, { 0, 0 }, nil
             local sliderAlive = true
             local function paint()
@@ -3301,7 +3199,6 @@ function Library:CreateWindow(config)
             end
             control.SetValue = control.Set
             local selectedHandle = "High"
-            -- Only a pressed thumb grows; hovering the track leaves it alone.
             local function sliderFeedback()
                 for name, knob in pairs({ Low = lowKnob, High = highKnob }) do
                     local pressed = activeSlider and activeSlider.Control == control and selectedHandle == name
@@ -3330,9 +3227,7 @@ function Library:CreateWindow(config)
                 else
                     control:Set(value)
                 end
-                -- A callback can destroy the slider, open a dialog, or end this gesture.
                 if not sliderAlive or not canInteract(container) or activeSlider ~= gesture then return end
-                -- While dragging, the thumb follows the pointer itself; it settles on the step when released.
                 local fraction = fractionAt(position)
                 if isRange and selectedHandle == "Low" then
                     goal[1] = math.min(fraction, goal[2])
@@ -3365,7 +3260,6 @@ function Library:CreateWindow(config)
                         Release = function()
                             if not sliderAlive or not uiAlive then return end
                             sliderFeedback()
-                            -- Ease from where the pointer left the thumb onto the committed step.
                             local low = isRange and control.Low or minimum
                             local high = isRange and control.High or control.Value
                             goal[1] = (low - minimum) / (maximum - minimum)
@@ -3449,11 +3343,9 @@ function Library:CreateWindow(config)
             text.Size = options.MultiLine and UDim2.new(1, 0, 0, 20) or UDim2.new(0.48, -8, 1, 0)
             text.TextTruncate = Enum.TextTruncate.AtEnd
             local input = rounded("TextBox", "Input", container, 0, 24, 0, 26, "Search", 6)
-            -- Inset 1px from the row's edges, which clip, so the border below is drawn in full.
             input.Position = options.MultiLine and UDim2.fromOffset(1, 25) or UDim2.new(0.48, 0, 0, 1)
             input.Size = options.MultiLine and UDim2.new(1, -2, 0, 80) or UDim2.new(0.52, -1, 0, 26)
             input.TextXAlignment = Enum.TextXAlignment.Left
-            -- Same edge as the key chips, so the field reads as a box instead of loose placeholder text.
             local inputBorder = Instance.new("UIStroke")
             inputBorder.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
             bindTheme(inputBorder, "Color", "Border")
@@ -3547,9 +3439,7 @@ function Library:CreateWindow(config)
             animateButton(button, "Search")
             local menu = rounded("CanvasGroup", "DropdownMenu", dropdownOverlay, 0, 0, 240, 100, "Card", 9)
             menu.ZIndex = 2
-            -- Lightly see-through so the menu reads as a layer over the window.
             menu.BackgroundTransparency = 0.12
-            -- Swallows presses and hover on the menu's padding so they never reach the rows underneath.
             local menuBlocker = rounded("TextButton", "InputBlocker", menu, 0, 0, 0, 0, "Card", 9)
             menuBlocker.Size = UDim2.fromScale(1, 1)
             menuBlocker.BackgroundTransparency = 1
@@ -3702,8 +3592,6 @@ function Library:CreateWindow(config)
                     motion(menuBorder, { Transparency = 1 }, 0, true)
                     finish()
                 else
-                    -- The border is a UIStroke on the CanvasGroup itself, which GroupTransparency does not
-                    -- fade; without its own fade it lingers as an empty outline. Slide back toward the button.
                     local rest = menu.Position
                     self.Animation = tween(menu, {
                         GroupTransparency = 1,
@@ -3773,7 +3661,6 @@ function Library:CreateWindow(config)
                     math.max(8, available.X - width * factor - 8)
                 )
                 y = math.clamp(y, 8, math.max(8, available.Y - height * factor - 8))
-                -- Grows out of the button: from just above when it opens below it, and vice versa.
                 menuTuck = (y < origin.Y and 6 or -6) * factor
                 menu.Size = UDim2.fromOffset(width, height)
                 menu.Position = UDim2.fromOffset(x, y + menuTuck)
@@ -3786,7 +3673,6 @@ function Library:CreateWindow(config)
                     paint(entry, false)
                     if selected(entry.Value) then selectedIndex = index end
                 end
-                -- When every option fits, a scaled-up menu can still overflow by a rounded pixel; keep it still.
                 list.ScrollingEnabled = #values > count
                 list.CanvasPosition =
                     Vector2.new(0, math.max(0, math.min((selectedIndex - 1) * 35, (#values - count) * 35)))
@@ -3865,7 +3751,6 @@ function Library:CreateWindow(config)
                     optionImage.Position = UDim2.fromOffset(8, 6)
                     optionImage.Size = UDim2.fromOffset(20, 20)
                     optionImage.Parent = option
-                    -- Player avatars are round, on a faint disc while the headshot loads.
                     if options.SpecialType == "Player" then
                         optionImage.BackgroundTransparency = 0
                         bindTheme(optionImage, "BackgroundColor3", "Navigation")
@@ -4330,7 +4215,6 @@ function Library:CreateWindow(config)
                         )
                     end
                 end
-                -- Use the same ID calculation as persistence, before allocating a row.
                 local config = type(options) == "table" and options or {}
                 local kind = method:sub(4)
                 if kind == "Slider" and config.Range == true then kind = "RangeSlider" end
@@ -4344,8 +4228,6 @@ function Library:CreateWindow(config)
                 local firstNewRow = #group.Elements + 1
                 local ok, control = pcall(create, self, options)
                 if not ok then
-                    -- Constructors may fail validation after allocating their UI.
-                    -- Remove only rows created by this call, including nested range sliders.
                     for index = #group.Elements, firstNewRow, -1 do
                         local element = group.Elements[index]
                         element:Destroy()
@@ -4449,7 +4331,6 @@ function Library:CreateWindow(config)
         return group
     end
 
-    -- `restyle` only repaints the tab buttons (after the bar changes style) without switching pages.
     local function selectTab(selected, restyle)
         local target = type(selected) == "table" and selected or tabs[selected]
         if not target or (activeTab == target and not restyle) then return end
@@ -4468,7 +4349,6 @@ function Library:CreateWindow(config)
                 setGroupTransparency(tab.Page, active and 1 or 0)
                 tab.Page.Position = UDim2.fromOffset(0, active and 6 or 0)
             end
-            -- The strip marks the active tab with a soft pill only: no rim, glow or lift.
             motion(tab.Button, { BackgroundTransparency = active and 0.12 or 1 }, 0.22)
             motion(tab.Scale, { Scale = active and not strip and 1.04 or 1 }, 0.22)
             motion(tab.Stroke, { Transparency = active and not strip and 0.18 or 1 }, 0.22)
@@ -4655,7 +4535,6 @@ function Library:CreateWindow(config)
         if not uiAlive then return end
         config = config or {}
         if activeDialog then activeDialog:Close() end
-        -- Lock interaction before release callbacks run: they may try to start another gesture.
         dialogOpen = true
         closeDropdown(true)
         cancelKeyCapture()
@@ -4669,7 +4548,6 @@ function Library:CreateWindow(config)
         local focused = UserInputService:GetFocusedTextBox()
         if focused then focused:ReleaseFocus() end
         if not uiAlive then return end
-        -- A release callback may have opened a newer dialog already.
         if activeDialog then return activeDialog end
         dialogOpen = true
         local shade = rounded("TextButton", "DialogOverlay", viewport, 0, 0, 0, 0, Color3.new(0, 0, 0), 0)
@@ -4820,7 +4698,6 @@ function Library:CreateWindow(config)
             Border = "6272A4",
             Text = "F8F8F2",
         },
-        -- Dark presets keep the card a step lighter than the background, like Default.
         Orchid = { Accent = "C753E0", Background = "0E0D12", Card = "16141C", Border = "2A2633", Text = "E6E1EE" },
         Catppuccin = { Accent = "CBA6F7", Background = "11111B", Card = "1E1E2E", Border = "313244", Text = "CDD6F4" },
         ["Tokyo Night"] = {
@@ -4849,7 +4726,6 @@ function Library:CreateWindow(config)
         Solarized = { Accent = "268BD2", Background = "002B36", Card = "073642", Border = "0E4B59", Text = "EEE8D5" },
         Ocean = { Accent = "38BDF8", Background = "0B1220", Card = "111A2E", Border = "1E2A44", Text = "DCE6F5" },
         Crimson = { Accent = "F43F5E", Background = "120C0E", Card = "1A1215", Border = "33232A", Text = "F0E4E7" },
-        -- Light presets: a white card on a tinted background, dark text, and a saturated accent.
         Latte = { Accent = "8839EF", Background = "E6E9EF", Card = "F4F5F8", Border = "CCD0DA", Text = "4C4F69" },
         Sakura = { Accent = "D6457A", Background = "FBF1F4", Card = "FFFFFF", Border = "EBD3DB", Text = "3A2730" },
     }
@@ -4938,7 +4814,6 @@ function Library:CreateWindow(config)
         refreshGlass()
         if self.ColorControls then
             for role, picker in pairs(self.ColorControls) do
-                -- The picker being dragged already shows this color; resetting it would fight the drag.
                 local dragging = activeColorDrag and activeColorDrag.Picker == picker
                 if not dragging then picker:Set(Theme[role], nil, true) end
             end
@@ -4987,8 +4862,6 @@ function Library:CreateWindow(config)
     end
 
     local keybindMenu = addOverlay({ Name = "KeybindMenu", Text = "Keybinds", Visible = false })
-    -- Keybind list: a header with the number of active binds, then one light row per bind with a status
-    -- dot, the name, its mode when it is not Toggle, and a key chip like the keybind controls use.
     keybindMenu.Frame.Size = UDim2.fromOffset(230, 72)
     keybindMenu.Frame.Text = ""
     keybindMenu.Frame:FindFirstChildOfClass("UICorner").CornerRadius = UDim.new(0, 10)
@@ -5045,7 +4918,6 @@ function Library:CreateWindow(config)
             end
             local controls = {}
             for control in pairs(keybindControls) do
-                -- Toggles without a key picker (or with NoUI) stay out of the keybind list.
                 if control.HasKeyPicker and not control.NoUI then table.insert(controls, control) end
             end
             table.sort(controls, function(a, b) return keybindControls[a] < keybindControls[b] end)
@@ -5074,7 +4946,6 @@ function Library:CreateWindow(config)
                     bindTheme(chipStroke, "Color", "Border")
                     chipStroke.Parent = chip
                     entry = { Row = row, Dot = dot, Name = name, Mode = mode, Chip = chip }
-                    -- A row toggles its bind when that is allowed (Toggle mode, toggle buttons shown).
                     row.MouseEnter:Connect(function()
                         if entry.Interactive then motion(row, { BackgroundTransparency = 0.55 }, 0.12) end
                     end)
@@ -5131,7 +5002,6 @@ function Library:CreateWindow(config)
             keybindMenu.Frame.Size = UDim2.fromOffset(keybindWidth, 48 + shown * keybindRowHeight + (shown - 1) * 2)
         end
         refreshKeybindMenu = function(removedControl)
-            -- Remove dead rows even while hidden, so the cache does not retain destroyed controls.
             local entry = removedControl and keybindRows[removedControl]
             if entry and not keybindControls[removedControl] then
                 entry.Row:Destroy()
@@ -5169,9 +5039,6 @@ function Library:CreateWindow(config)
         local ok, thumbnail = playerThumbnail(Players, player.UserId)
         if ok and profile.Parent then profile.Image = thumbnail end
     end)
-    -- Taskbar-style search pill at the start of the bar, mirrored with the header search (only one of the
-    -- two is shown, see applySearchStyle). A side bar has no room for a field, so there it is a round button
-    -- that opens a small glass search card beside the bar while typing.
     local dockSearch = rounded("TextButton", "DockSearch", sidebar, 12, 14, 148, 36, "Search", 18)
     local layoutDockSearch
     do
@@ -5184,16 +5051,12 @@ function Library:CreateWindow(config)
         rim.Parent = dockSearch
         local glyph = icon(dockSearch, "search", 12, 10, 16, "Muted")
         glyph.Name = "Glyph"
-        -- Matches the divider before the profile, so the tabs sit between two dividers.
         local divider = rounded("Frame", "Divider", dockSearch, 0, 0, 1, 32, "Text", 1)
         divider.BackgroundTransparency = 0.9
-        -- Side-bar search card: styled like the bar itself and kept clear of it, rather than stretching the
-        -- button across the bar's edge.
         local card = rounded("CanvasGroup", "SearchCard", dockSearch, 0, 0, 236, 48, "Background", 16)
         setGroupTransparency(card, 1)
         card.Visible = false
         card.Active = true
-        -- Same see-through glass as the window: sheen, reflected rim, theme-aware opacity.
         local cardRim = Instance.new("UIStroke")
         cardRim.Color = glassRimColor
         cardRim.Transparency = 1
@@ -5212,20 +5075,17 @@ function Library:CreateWindow(config)
         setUIFont(box)
         bindTheme(box, "TextColor3", "Text")
         bindTheme(box, "PlaceholderColor3", "Muted")
-        -- In the card the box covers the whole card, so a click anywhere on it keeps typing.
         local boxPadding = Instance.new("UIPadding")
         boxPadding.Parent = box
         local hovering = false
         local function refresh()
             local active = box:IsFocused()
             tween(dockSearch, { BackgroundColor3 = (hovering or active) and "Hover" or "Search" }, 0.16)
-            -- On the top strip the button is a bare glyph that only gets a backdrop on hover.
             if dockEdge == "Top" then
                 motion(dockSearch, { BackgroundTransparency = (hovering or active) and 0.4 or 1 }, 0.16)
             end
             tween(rim, { Color = active and "Accent" or "Text" }, 0.16)
             motion(rim, { Transparency = active and 0.35 or 0.9 }, 0.16)
-            -- The glyph stays lit while a query is filtering, which a collapsed side-bar button otherwise hides.
             tween(glyph, { ImageColor3 = (active or box.Text ~= "") and "Accent" or "Muted" }, 0.16)
         end
         layoutDockSearch = function(animate)
@@ -5237,14 +5097,11 @@ function Library:CreateWindow(config)
                 local right = dockEdge == "Right"
                 local rest, away
                 if dockEdge == "Top" then
-                    -- Strip: a bare search glyph at the end of the bar; the card drops just below the bar.
                     dockSearch.AnchorPoint = Vector2.new(1, 0.5)
                     dockSearch.Position = UDim2.new(1, -6, 0.5, 0)
                     dockSearch.Size = UDim2.fromOffset(36, 36)
                     dockSearch.BackgroundTransparency = (hovering or box:IsFocused()) and 0.4 or 1
                     glyph.Position = UDim2.fromOffset(10, 10)
-                    -- The card floats above the window, centred over the tab strip and as wide as it, so it
-                    -- never covers the page.
                     local stripWidth = sidebar.Size.X.Offset
                     card.Size = UDim2.fromOffset(math.max(236, stripWidth), 48)
                     card.AnchorPoint = Vector2.new(0.5, 1)
@@ -5260,7 +5117,6 @@ function Library:CreateWindow(config)
                     divider.AnchorPoint = Vector2.new(0.5, 0)
                     divider.Position = UDim2.new(0.5, 0, 1, 10)
                     divider.Size = UDim2.fromOffset(32, 1)
-                    -- The card sits 10px past the bar's outer edge, level with the button.
                     card.AnchorPoint = Vector2.new(right and 1 or 0, 0.5)
                     rest = UDim2.new(right and 0 or 1, right and -20 or 20, 0.5, 0)
                     away = UDim2.new(right and 0 or 1, right and -12 or 12, 0.5, 0)
@@ -5310,8 +5166,6 @@ function Library:CreateWindow(config)
             refresh()
         end)
         box.Focused:Connect(function()
-            -- Searching from the bar while the window is hidden brings it back; showing it drops focus,
-            -- so take it again once the window has started opening.
             if not uiShown and not dialogOpen then
                 setUIVisible(true)
                 task.defer(function()
@@ -5321,8 +5175,6 @@ function Library:CreateWindow(config)
             refresh()
         end)
         box.FocusLost:Connect(function(enterPressed)
-            -- A press on the round button also drops focus first; leave closing to its Activated handler,
-            -- otherwise the card would close here and reopen on release.
             if expanded and (enterPressed or not hovering) then
                 expanded = false
                 layoutDockSearch(true)
@@ -5335,7 +5187,6 @@ function Library:CreateWindow(config)
                 box:CaptureFocus()
                 return
             end
-            -- Side-bar button toggles the card; open the window first (that drops focus), then type.
             if expanded then
                 expanded = false
                 box:ReleaseFocus()
@@ -5370,7 +5221,6 @@ function Library:CreateWindow(config)
     local dockScale = Instance.new("UIScale")
     dockScale.Parent = dockHost
     local dockGlass = rounded("Frame", "DockGlass", dockHost, 0, 0, 0, 0, "Background", 22)
-    -- Sits on the glass, beneath the tab strip (sidebar is raised above the glass in setLayoutStyle).
     dockGlowLayer = Instance.new("Frame")
     dockGlowLayer.Name = "GlowLayer"
     dockGlowLayer.BackgroundTransparency = 1
@@ -5401,7 +5251,6 @@ function Library:CreateWindow(config)
     local dockProgress, dockVelocity, dockFitScale = 0, 0, 1
     local revealHover, revealHoverAmount = false, 0
     local function dockVertical() return dockEdge == "Left" or dockEdge == "Right" end
-    -- Centres an object along the dock edge, `inward` px in from that edge (negative = past it).
     local function placeAtEdge(object, inward)
         if dockEdge == "Bottom" then
             object.AnchorPoint = Vector2.new(0.5, 1)
@@ -5417,12 +5266,6 @@ function Library:CreateWindow(config)
             object.Position = UDim2.new(1, -inward, 0.5, 0)
         end
     end
-    -- Distance from the dock's edge of the GUI area to the real screen edge. The ScreenGui respects the
-    -- GUI inset, so at the top the area starts below Roblox's top bar; a bar "hidden" only past the area
-    -- edge would still show inside that strip.
-    -- GetGuiInset alone is not enough: the default ScreenInsets (CoreUISafeInsets) can trim more than it
-    -- reports, so also measure the real shortfall between the camera viewport and the GUI area. Over-hiding
-    -- is harmless; under-hiding leaves the bar peeking into Roblox's top bar.
     local function dockScreenGap()
         local low, high = screenBounds()
         local area = viewport.AbsoluteSize
@@ -5431,8 +5274,6 @@ function Library:CreateWindow(config)
         if dockEdge == "Right" then return high.X - area.X end
         return high.Y - area.Y
     end
-    -- Resting distance of the dock from its GUI-area edge. A top bar moves up into Roblox's own top-bar
-    -- row (centred on it) when that strip is tall enough, instead of hanging below it.
     local function dockRestInward()
         local gap = dockScreenGap()
         if dockEdge == "Top" and gap >= 40 then
@@ -5444,8 +5285,6 @@ function Library:CreateWindow(config)
         local progress = math.clamp(dockProgress, 0, 1)
         local hiddenDepth = 12 + (dockEdge == "Top" and 48 or 64) * dockFitScale + dockScreenGap()
         placeAtEdge(dockHost, (dockRestInward() + hiddenDepth) * dockProgress - hiddenDepth)
-        -- Spring overshoot can leave a sliver on screen; fully parked means invisible. A top bar sits in the
-        -- window header instead, so the floating dock stays hidden.
         dockHost.Visible = dockEdge ~= "Top" and (dockProgress > 0.002 or dockExpanded)
         dockScale.Scale = dockFitScale * (0.94 + 0.06 * dockProgress)
         dockGlass.BackgroundTransparency = (0.08 + (1 - progress) * 0.22) * glassOpacityFactor
@@ -5466,8 +5305,6 @@ function Library:CreateWindow(config)
         renderDock()
     end
     refreshDockLayout = function()
-        -- A top bar is a slim icon strip in the window header (the active tab in a soft pill) with a search
-        -- button at the end. The other edges keep the floating icon dock with the profile.
         local strip = dockEdge == "Top"
         local tabSpan = 0
         for _, tab in ipairs(tabs) do
@@ -5484,16 +5321,12 @@ function Library:CreateWindow(config)
             tab.Button:FindFirstChildOfClass("UICorner").CornerRadius = UDim.new(0, strip and 12 or 10)
             tabSpan = tabSpan + tab.Button.Size.X.Offset + (strip and 6 or 8)
         end
-        -- The bar is laid out along its edge: search, tabs, then a divider and the profile at the far end.
         local vertical = dockVertical()
         local thickness = strip and 48 or 64
         local searchSpan = searchStyle ~= "Bar" and 0 or (vertical or strip) and (strip and 42 or 58) or 164
         local available = vertical and viewport.AbsoluteSize.Y or viewport.AbsoluteSize.X
-        -- Strip: an even 6px everywhere (edges, between tabs, before the search button).
         local length = strip and (6 + tabSpan + searchSpan)
             or math.min(76 + searchSpan + #tabs * 52, math.max(128 + searchSpan, available - 24))
-        -- The strip lives in the window header: centred, or after the logo when the header search field is
-        -- shown on the right. It never runs under the logo or the field; extra tabs scroll.
         local headerSearch = strip and searchStyle == "Header"
         if strip then
             local room = root.Size.X.Offset - (headerSearch and 60 + 242 or 120)
@@ -5514,7 +5347,6 @@ function Library:CreateWindow(config)
         profile.Visible = not strip
         dockDivider.Visible = not strip
         dockFitScale = math.min(root:GetAttribute("DPIScale") or 1, math.max(0.1, (available - 24) / length))
-        -- Fingers need a far bigger target than the thin grip, and the very edge is the OS swipe zone.
         local revealLength, revealDepth = 104, 20
         if UserInputService.TouchEnabled then revealLength, revealDepth = 180, 44 end
         dockReveal.Size = vertical and UDim2.fromOffset(revealDepth, revealLength)
@@ -5547,7 +5379,6 @@ function Library:CreateWindow(config)
         navigationLayout.Padding = UDim.new(0, strip and 6 or 8)
         if activeTab then selectTab(activeTab, true) end
     end
-    -- The header strip is limited by the window width, so refit it when the window is resized.
     root:GetPropertyChangedSignal("Size"):Connect(function()
         if dockEdge == "Top" then refreshDockLayout() end
     end)
@@ -5588,12 +5419,9 @@ function Library:CreateWindow(config)
         showDock(true, true)
     end
     do
-        -- Spring-driven open/close: progress 0 = tucked into the dock, 1 = resting at home.
-        -- Reversing mid-flight keeps the current velocity, so rapid toggles never snap.
         local home, savedPosition
         local progress, velocity, target = 1, 0, 1
         local minimumScale, hostPadding = 0.14, 12
-        -- The centre of the dock, where the window shrinks into when hidden.
         local function landingPoint()
             local inward = dockRestInward() + (dockEdge == "Top" and 24 or 32) * dockFitScale
             local size = viewport.AbsoluteSize
@@ -5608,7 +5436,6 @@ function Library:CreateWindow(config)
         end
         local function render()
             local clamped = math.clamp(progress, 0, 1)
-            -- Position leads the scale so the window looks like it lifts out of the dock.
             local travel = 1 - (1 - clamped) ^ 3
             local point = landingPoint():Lerp(home, travel)
             local size = Vector2.new(root.Size.X.Offset, root.Size.Y.Offset) * scale.Scale
@@ -5619,8 +5446,6 @@ function Library:CreateWindow(config)
         end
         finishUIVisibility = function()
             if windowTransitioning then
-                -- Hide before moving back out of the host, so a closing window is not laid out at full
-                -- size for one last frame.
                 if not uiShown then root.Visible = false end
                 root.Parent = viewport
                 root.Position = savedPosition
@@ -5656,7 +5481,6 @@ function Library:CreateWindow(config)
         track(game:GetService("RunService").RenderStepped:Connect(function(dt)
             if not windowTransitioning then return end
             dt = math.min(dt, 1 / 30)
-            -- Opening settles with a slight overshoot; closing is near-critically damped and quicker.
             local omega, damping = 17, 0.72
             if target == 0 then omega, damping = 22, 0.95 end
             local frequency = omega * math.sqrt(1 - damping * damping)
@@ -5689,7 +5513,6 @@ function Library:CreateWindow(config)
     track(viewport:GetPropertyChangedSignal("AbsoluteSize"):Connect(refreshDockLayout))
     local function updateDockHover(mouse, now)
         if not dockAutoHide or dockEdge == "Top" then return end
-        -- Typing in the bar's search (pill or side card) keeps it out, wherever the pointer is.
         local focused = UserInputService:GetFocusedTextBox()
         if focused and focused:IsDescendantOf(dockHost) then
             dockHoverUntil = now + 0.65
@@ -5697,7 +5520,6 @@ function Library:CreateWindow(config)
             return
         end
         local size, vertical = viewport.AbsoluteSize, dockVertical()
-        -- `along` runs parallel to the dock edge; `depth` is the distance in from that edge.
         local along = vertical and mouse.Y - size.Y / 2 or mouse.X - size.X / 2
         local length = vertical and dockHost.AbsoluteSize.Y or dockHost.AbsoluteSize.X
         local depth = dockEdge == "Top" and mouse.Y
@@ -5705,7 +5527,6 @@ function Library:CreateWindow(config)
             or dockEdge == "Right" and size.X - mouse.X
             or size.Y - mouse.Y
         local half = dockExpanded and (length / 2 + 12) or 56
-        -- The pointer can be past the GUI area (e.g. over Roblox's top bar) and still be at the screen edge.
         local near = math.abs(along) <= half
             and depth >= -(2 + dockScreenGap())
             and depth <= (dockExpanded and 32 + (dockEdge == "Top" and 48 or 64) * dockFitScale or 18)
@@ -5745,11 +5566,8 @@ function Library:CreateWindow(config)
         )
     end
     local resizeHandle
-    -- Scoped block: CreateWindow sits close to Luau's 200-local limit, so helpers used only by
-    -- window dragging live in here instead of at function level.
     do
     local dragInput, dragStart, windowStart, dragTarget, dragRendered
-    -- Touch press waiting to become a drag (Input, Start, Time, Scroller), and the scroller frozen by one.
     local hold, heldScroller = {}, nil
     local function releaseScroller()
         if heldScroller then heldScroller.ScrollingEnabled = true end
@@ -5793,8 +5611,6 @@ function Library:CreateWindow(config)
             end
             return
         end
-        -- A focused TextBox (search, a textbox control, or chat) only loses focus after this click is
-        -- delivered, so treat the click as the blur instead of refusing the drag.
         local focused = UserInputService:GetFocusedTextBox()
         if focused then focused:ReleaseFocus() end
         closeDropdown(true)
@@ -5804,8 +5620,6 @@ function Library:CreateWindow(config)
         dragTarget = windowStart
         dragRendered = windowStart
     end
-    -- A touch held still on a scrollable column becomes a window drag; the column stops scrolling until
-    -- the finger lifts, so the two never fight.
     local function promoteHold()
         local input, scroller = hold.Input, hold.Scroller
         hold.Input = nil
@@ -5829,10 +5643,7 @@ function Library:CreateWindow(config)
     sidebar.Active = false
     header.Active = true
     bindDragStart(root, beginDrag)
-    -- Connections go through track() (disconnected when the UI is destroyed): this block is at Luau's
-    -- 200-local limit, so it cannot hold them in locals.
     track(UserInputService.InputChanged:Connect(function(input)
-        -- Moving before the hold time means the finger is scrolling, not grabbing the window.
         if hold.Input and input == hold.Input
             and (Vector2.new(input.Position.X, input.Position.Y) - hold.Start).Magnitude > 10 then
             hold.Input = nil
@@ -5901,10 +5712,6 @@ function Library:CreateWindow(config)
         end
     end
     do
-        -- Corner grip: an arc floating just outside the window's rounded corner, concentric with it.
-        -- It is a stroked circle centred on the corner's curve centre, with a diagonal gradient that hides
-        -- everything but the bottom-right quarter. No clipping is involved (UIStroke and ClipsDescendants
-        -- do not combine reliably), so the arc always lands outside the window edge.
         local gripGap = 5
         local cornerRadius = rootCorner.CornerRadius.Offset
         local ringRadius = cornerRadius + gripGap
@@ -5937,7 +5744,6 @@ function Library:CreateWindow(config)
         arcStroke.Transparency = 0.45
         bindTheme(arcStroke, "Color", "Text")
         arcStroke.Parent = arc
-        -- Along the 45° diagonal the quarter arc spans roughly 0.75 (its ends) to 0.85 (its middle).
         local arcFade = Instance.new("UIGradient")
         arcFade.Rotation = 45
         arcFade.Transparency = NumberSequence.new({
@@ -6006,8 +5812,6 @@ function Library:CreateWindow(config)
             local available = viewport.AbsoluteSize
             local maxWidth = math.max(minimumWidth, math.min(1600, (available.X - topLeft.X - 16) / initialScale))
             local maxHeight = math.max(320, math.min(1000, (available.Y - topLeft.Y - 16) / initialScale))
-            -- Whole pixels only: UDim offsets are integers, so a fractional target could never be reached,
-            -- leaving the resize (and its "Resizing" lock on window dragging) running forever.
             target = Vector2.new(
                 math.floor(math.clamp(initialSize.X + delta.X, minimumWidth, maxWidth) + 0.5),
                 math.floor(math.clamp(initialSize.Y + delta.Y, 320, maxHeight) + 0.5)
@@ -6078,11 +5882,9 @@ function Library:CreateWindow(config)
         end
     )
     local function applyStyle(value)
-        -- Older configs saved "Normal"; anything unknown falls back to the bottom bar.
         setLayoutStyle(layoutEdges[value] and value or "Bottom bar")
         if layoutControl and layoutControl.Value ~= layoutStyle then layoutControl:Set(layoutStyle, true) end
     end
-    -- One search field at a time: the taskbar pill in the bar, or the field in the window header.
     local function applySearchStyle(value)
         searchStyle = value == "Header" and "Header" or "Bar"
         local focused = UserInputService:GetFocusedTextBox()
@@ -6204,7 +6006,6 @@ function Library:CreateWindow(config)
         closeDropdown(true)
         setWindowSize(size)
     end
-    -- Scales the window and the bar: 1.25, 125 or "125%" (clamped to 50%-200%).
     function window:SetDPIScale(value)
         if type(value) == "string" then value = tonumber((value:gsub("%%", ""))) end
         assert(type(value) == "number" and value == value, 'DPI scale expects a number or "125%"')
@@ -6223,8 +6024,6 @@ function Library:CreateWindow(config)
     function window:SetVisible(value) setUIVisible(value) end
     function window:IsVisible() return uiShown end
     function window:Toggle() setUIVisible(not uiShown) end
-    -- Floating round button that shows/hides the window, for touch screens with no menu key. Tap to toggle,
-    -- drag to move. Built here (its own scope) because CreateWindow is at Luau's 200-local limit.
     function window:SetToggleButtonVisible(visible)
         local button = self.ToggleButton
         if not button then
@@ -6247,13 +6046,11 @@ function Library:CreateWindow(config)
             mark.Image = logo.Image
             mark.Parent = button
             logo:GetPropertyChangedSignal("Image"):Connect(function() mark.Image = logo.Image end)
-            -- Dimmed while the window is hidden, so the button doubles as a state indicator.
             local function refreshState()
                 motion(mark, { ImageTransparency = uiShown and 0 or 0.4 }, 0.18)
             end
             refreshState()
             screen:GetAttributeChangedSignal("Shown"):Connect(refreshState)
-            -- Stored as a fraction of the screen, so it keeps its spot across rotations and resizes.
             local function place(center)
                 local area, half = viewport.AbsoluteSize, button.AbsoluteSize / 2 + Vector2.new(4, 4)
                 center = Vector2.new(
@@ -6285,14 +6082,12 @@ function Library:CreateWindow(config)
                         and input.UserInputType == Enum.UserInputType.MouseMovement
                 if not follows then return end
                 local delta = Vector2.new(input.Position.X, input.Position.Y) - pressStart
-                -- A little slack so a slightly shaky tap still counts as a tap.
                 if not dragged and delta.Magnitude < 8 then return end
                 dragged = true
                 place(pressOrigin + delta)
             end))
             track(UserInputService.InputEnded:Connect(function(input)
                 if not pressInput then return end
-                -- Touches must be the same finger; the mouse button may arrive as a fresh InputObject.
                 local ends = input == pressInput
                     or pressInput.UserInputType == Enum.UserInputType.MouseButton1
                         and input.UserInputType == Enum.UserInputType.MouseButton1
@@ -6330,8 +6125,6 @@ function Library:CreateWindow(config)
     function window:CreateSettingsTab(name)
         if settingsTab then return settingsTab end
         settingsTab = addTab({ Name = name or "Settings", Icon = "settings" })
-        -- ThemeManager:ApplyToTab puts these controls in its Interface tab. Without it, they get a card of
-        -- their own once the caller's setup code has run.
         task.defer(function()
             if uiAlive and not self._InterfaceBuilt then
                 self:AddInterfaceControls(settingsTab:AddLeftGroupbox("Interface", "settings"))
@@ -6370,7 +6163,6 @@ function Library:CreateWindow(config)
             Searchable = false,
             MaxVisibleDropdownItems = #dpiScales,
             NoSave = true,
-            -- Deferred: rescaling closes open dropdowns, including this one mid-callback.
             Callback = function(value)
                 if value then task.defer(function() self:SetDPIScale(value) end) end
             end,
@@ -6383,7 +6175,6 @@ function Library:CreateWindow(config)
             Options = table.clone(layoutStyles),
             Default = layoutStyle,
             NoSave = true,
-            -- Deferred: switching layouts closes open dropdowns, including this one mid-callback.
             Callback = function(value)
                 if value then task.defer(applyStyle, value) end
             end,
@@ -6406,7 +6197,6 @@ function Library:CreateWindow(config)
     end
     function window:Destroy()
         if uiAlive then
-            -- Invalidate synchronously even when Roblox defers Destroying signals.
             beginUIDestroy()
             screen:Destroy()
         end
@@ -6414,7 +6204,6 @@ function Library:CreateWindow(config)
         table.clear(Toggles)
     end
     if config.DPIScale then window:SetDPIScale(config.DPIScale) end
-    -- Shown by default on touch devices; ToggleButton = true/false forces it on or off.
     if config.ToggleButton == nil then
         window:SetToggleButtonVisible(UserInputService.TouchEnabled)
     else
