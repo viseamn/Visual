@@ -1944,47 +1944,92 @@ function Library:CreateWindow(config)
         return true
     end
 
-    local tooltip = { Owner = nil, Token = 0, Ready = false }
-    function tooltip:Hide(owner)
-        if owner and self.Owner ~= owner then return end
-        self.Token = self.Token + 1
-        self.Owner = nil
-        self.Ready = false
-        if self.Frame then self.Frame.Visible = false end
-    end
-    function tooltip:Bind(owner, info)
-        if not info.Tooltip and not info.DisabledTooltip then return end
-        owner.MouseEnter:Connect(function()
-            self:Hide()
-            self.Owner = owner
-            local token = self.Token
-            task.delay(0.35, function()
-                if self.Token ~= token or self.Owner ~= owner or not owner.Parent then return end
-                local text = owner:GetAttribute("Disabled") and info.DisabledTooltip or info.Tooltip
-                if not text or text == "" then return end
-                if not self.Frame then
-                    self.Frame = rounded("Frame", "Tooltip", viewport, 0, 0, 260, 0, "Card", 6)
-                    self.Frame.Visible = false
-                    self.Frame.AutomaticSize = Enum.AutomaticSize.Y
-                    self.Frame.ZIndex = 240
-                    local padding = Instance.new("UIPadding")
-                    padding.PaddingTop, padding.PaddingBottom = UDim.new(0, 8), UDim.new(0, 8)
-                    padding.PaddingLeft, padding.PaddingRight = UDim.new(0, 10), UDim.new(0, 10)
-                    padding.Parent = self.Frame
-                    self.Label = label(self.Frame, "", 12)
-                    self.Label.Size = UDim2.new(1, 0, 0, 0)
-                    self.Label.AutomaticSize = Enum.AutomaticSize.Y
-                    self.Label.TextWrapped = true
-                    self.Label.ZIndex = 241
-                end
-                self.Label.Text = tostring(text)
-                self.Ready = true
+    -- Tooltip: a small card sized to its text, wrapping only past maxWidth. It fades in with a 4px rise
+    -- after a short hover and follows the pointer.
+    local tooltip = { Owner = nil, Token = 0, Ready = false, Rise = 0 }
+    do
+        local maxWidth, padX, padY = 240, 10, 6
+        local function build()
+            local frame = rounded("Frame", "Tooltip", viewport, 0, 0, 0, 0, "Background", 7)
+            frame.Visible = false
+            frame.ZIndex = 240
+            frame.BackgroundTransparency = 1
+            local stroke = Instance.new("UIStroke")
+            stroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+            bindTheme(stroke, "Color", "Border")
+            stroke.Transparency = 1
+            stroke.Parent = frame
+            local text = label(frame, "", 12)
+            text.Position = UDim2.fromOffset(padX, padY)
+            text.Size = UDim2.new(1, -padX * 2, 1, -padY * 2)
+            text.TextWrapped = true
+            text.TextYAlignment = Enum.TextYAlignment.Center
+            text.TextTransparency = 1
+            text.ZIndex = 241
+            tooltip.Frame, tooltip.Stroke, tooltip.Label = frame, stroke, text
+        end
+        -- Text bounds in the current UI font; GetTextBoundsAsync can yield, so it runs in the show delay.
+        local function measure(message, width)
+            local ok, bounds = pcall(function()
+                local params = Instance.new("GetTextBoundsParams")
+                params.Text = message
+                params.Font = tooltip.Label.FontFace
+                params.Size = 12
+                params.Width = width
+                return game:GetService("TextService"):GetTextBoundsAsync(params)
             end)
-        end)
-        owner.MouseLeave:Connect(function() self:Hide(owner) end)
-        owner.Destroying:Connect(function() self:Hide(owner) end)
+            if ok then return bounds end
+            return game:GetService("TextService")
+                :GetTextSize(message, 12, Enum.Font.BuilderSans, Vector2.new(width, 1000))
+        end
+        local function fade(visible)
+            local duration = visible and 0.14 or 0.08
+            motion(tooltip.Frame, { BackgroundTransparency = visible and 0.04 * glassOpacityFactor or 1 }, duration)
+            motion(tooltip.Stroke, { Transparency = visible and 0.25 or 1 }, duration)
+            motion(tooltip.Label, { TextTransparency = visible and 0 or 1 }, duration)
+        end
+        function tooltip:Hide(owner)
+            if owner and self.Owner ~= owner then return end
+            self.Token = self.Token + 1
+            self.Owner = nil
+            self.Ready = false
+            if self.Frame then
+                self.Frame.Visible = false
+                motion(self.Frame, { BackgroundTransparency = 1 }, 0, true)
+                motion(self.Stroke, { Transparency = 1 }, 0, true)
+                motion(self.Label, { TextTransparency = 1 }, 0, true)
+            end
+        end
+        function tooltip:Bind(owner, info)
+            if not info.Tooltip and not info.DisabledTooltip then return end
+            owner.MouseEnter:Connect(function()
+                self:Hide()
+                self.Owner = owner
+                local token = self.Token
+                task.delay(0.35, function()
+                    if self.Token ~= token or self.Owner ~= owner or not owner.Parent then return end
+                    local message = owner:GetAttribute("Disabled") and info.DisabledTooltip or info.Tooltip
+                    if not message or message == "" then return end
+                    message = tostring(message)
+                    if not self.Frame then build() end
+                    self.Label.Text = message
+                    local width = math.max(1, math.min(maxWidth, viewport.AbsoluteSize.X - 16) - padX * 2)
+                    local bounds = measure(message, width)
+                    if self.Token ~= token then return end
+                    self.Frame.Size = UDim2.fromOffset(
+                        math.ceil(math.min(bounds.X, width)) + padX * 2 + 1,
+                        math.ceil(bounds.Y) + padY * 2
+                    )
+                    self.Rise = 4
+                    self.Ready = true
+                    fade(true)
+                end)
+            end)
+            owner.MouseLeave:Connect(function() self:Hide(owner) end)
+            owner.Destroying:Connect(function() self:Hide(owner) end)
+        end
     end
-    track(game:GetService("RunService").RenderStepped:Connect(function()
+    track(game:GetService("RunService").RenderStepped:Connect(function(dt)
         if not tooltip.Owner then return end
         -- MouseLocation includes Roblox's top bar; AbsolutePosition uses GUI coordinates.
         local mouse = UserInputService:GetMouseLocation() - game:GetService("GuiService"):GetGuiInset()
@@ -2008,9 +2053,9 @@ function Library:CreateWindow(config)
         if ancestor ~= screen then tooltip:Hide(); return end
         if dialogOpen then tooltip:Hide(); return end
         if tooltip.Frame and tooltip.Ready then
-            tooltip.Frame.Size = UDim2.fromOffset(math.max(1, math.min(260, viewport.AbsoluteSize.X - 16)), 0)
+            tooltip.Rise = tooltip.Rise * math.exp(-dt * 22)
             local x, y = tooltipPosition(mouse - viewport.AbsolutePosition, tooltip.Frame.AbsoluteSize, viewport.AbsoluteSize)
-            tooltip.Frame.Position = UDim2.fromOffset(x, y)
+            tooltip.Frame.Position = UDim2.fromOffset(math.floor(x + 0.5), math.floor(y + tooltip.Rise + 0.5))
             tooltip.Frame.Visible = true
         end
     end))
@@ -4942,16 +4987,19 @@ function Library:CreateWindow(config)
     end
 
     local keybindMenu = addOverlay({ Name = "KeybindMenu", Text = "Keybinds", Visible = false })
-    keybindMenu.Frame.Size = UDim2.fromOffset(280, 64)
+    -- Keybind list: a header with the number of active binds, then one light row per bind with a status
+    -- dot, the name, its mode when it is not Toggle, and a key chip like the keybind controls use.
+    keybindMenu.Frame.Size = UDim2.fromOffset(230, 72)
     keybindMenu.Frame.Text = ""
+    keybindMenu.Frame:FindFirstChildOfClass("UICorner").CornerRadius = UDim.new(0, 10)
     local keybindTitle = label(keybindMenu.Frame, "Keybinds", 13)
-    keybindTitle.Position = UDim2.fromOffset(12, 0)
-    keybindTitle.Size = UDim2.new(1, -24, 0, 32)
+    keybindTitle.Position = UDim2.fromOffset(32, 0)
+    keybindTitle.Size = UDim2.new(1, -80, 0, 36)
     setUIFont(keybindTitle, true)
     local keybindList = Instance.new("ScrollingFrame")
     keybindList.Name = "Entries"
-    keybindList.Position = UDim2.fromOffset(8, 32)
-    keybindList.Size = UDim2.new(1, -16, 1, -40)
+    keybindList.Position = UDim2.fromOffset(6, 42)
+    keybindList.Size = UDim2.new(1, -12, 1, -48)
     keybindList.BackgroundTransparency = 1
     keybindList.BorderSizePixel = 0
     keybindList.ScrollBarThickness = 0
@@ -4960,13 +5008,33 @@ function Library:CreateWindow(config)
     keybindList.AutomaticCanvasSize = Enum.AutomaticSize.Y
     keybindList.Parent = keybindMenu.Frame
     local keybindLayout = Instance.new("UIListLayout")
-    keybindLayout.Padding = UDim.new(0, 4)
+    keybindLayout.Padding = UDim.new(0, 2)
     keybindLayout.SortOrder = Enum.SortOrder.LayoutOrder
     keybindLayout.Parent = keybindList
     keybindMenu.ShowToggleButtons = true
     do
+        local keybindWidth, keybindRowHeight, keybindVisibleRows = 230, 26, 8
+        local frameStroke = Instance.new("UIStroke")
+        frameStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+        bindTheme(frameStroke, "Color", "Border")
+        frameStroke.Transparency = 0.2
+        frameStroke.Parent = keybindMenu.Frame
+        icon(keybindMenu.Frame, "keyboard", 12, 11, 14, "Accent")
+        local activeCount = label(keybindMenu.Frame, "", 11)
+        activeCount.AnchorPoint = Vector2.new(1, 0)
+        activeCount.Position = UDim2.new(1, -12, 0, 0)
+        activeCount.Size = UDim2.fromOffset(48, 36)
+        activeCount.TextXAlignment = Enum.TextXAlignment.Right
+        bindTheme(activeCount, "TextColor3", "Muted")
+        local headerLine = rounded("Frame", "Divider", keybindMenu.Frame, 12, 36, 0, 1, "Border", 0)
+        headerLine.Size = UDim2.new(1, -24, 0, 1)
+
         local keybindRows, keybindEmpty = {}, nil
         local keybindDirty, keybindRefreshQueued = true, false
+        local textService = game:GetService("TextService")
+        local function textWidth(text, size)
+            return math.ceil(textService:GetTextSize(text, size, Enum.Font.BuilderSansMedium, Vector2.new(400, 40)).X)
+        end
         local function renderKeybindMenu()
             if not uiAlive or not keybindMenu.Frame.Parent then return end
             for control, entry in pairs(keybindRows) do
@@ -4981,62 +5049,86 @@ function Library:CreateWindow(config)
                 if control.HasKeyPicker and not control.NoUI then table.insert(controls, control) end
             end
             table.sort(controls, function(a, b) return keybindControls[a] < keybindControls[b] end)
+            local active = 0
             for index, control in ipairs(controls) do
                 local entry = keybindRows[control]
                 if not entry then
-                    local row = rounded("Frame", control.Name, keybindList, 0, 0, 0, 26, "Search", 5)
-                    row.Size = UDim2.new(1, 0, 0, 26)
+                    local row = rounded("TextButton", control.Name, keybindList, 0, 0, 0, keybindRowHeight, "Hover", 6)
+                    row.Size = UDim2.new(1, 0, 0, keybindRowHeight)
+                    row.BackgroundTransparency = 1
+                    local dot = rounded("Frame", "Dot", row, 8, 10, 6, 6, "Muted", 3)
                     local name = label(row, control.Name, 12)
-                    name.Position = UDim2.fromOffset(7, 0)
-                    name.Size = UDim2.new(0.52, -7, 1, 0)
+                    name.Position = UDim2.fromOffset(22, 0)
                     name.TextTruncate = Enum.TextTruncate.AtEnd
-                    local shortcut = label(row, "", 11)
-                    shortcut.Name = "Shortcut"
-                    shortcut.Position = UDim2.new(0.52, 0, 0, 0)
-                    shortcut.Size = UDim2.new(0.48, -32, 1, 0)
-                    shortcut.TextXAlignment = Enum.TextXAlignment.Right
-                    shortcut.TextTruncate = Enum.TextTruncate.AtEnd
-                    bindTheme(shortcut, "TextColor3", "Muted")
-                    local state = rounded("TextButton", "State", row, 0, 4, 18, 18, "Navigation", 4)
-                    state.Position = UDim2.new(1, -23, 0, 4)
-                    local check = icon(state, "check", 2, 2, 14, "OnAccent")
-                    state.Activated:Connect(function()
-                        if uiAlive and not dialogOpen and not control.Destroyed and state.Interactable then
+                    local mode = label(row, "", 11)
+                    mode.AnchorPoint = Vector2.new(1, 0)
+                    mode.TextXAlignment = Enum.TextXAlignment.Right
+                    bindTheme(mode, "TextColor3", "Muted")
+                    local chip = rounded("TextLabel", "Key", row, 0, 0, 22, 18, "Search", 5)
+                    chip.AnchorPoint = Vector2.new(1, 0.5)
+                    chip.Position = UDim2.new(1, -6, 0.5, 0)
+                    chip.TextSize = 11
+                    setUIFont(chip, true)
+                    local chipStroke = Instance.new("UIStroke")
+                    chipStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+                    bindTheme(chipStroke, "Color", "Border")
+                    chipStroke.Parent = chip
+                    entry = { Row = row, Dot = dot, Name = name, Mode = mode, Chip = chip }
+                    -- A row toggles its bind when that is allowed (Toggle mode, toggle buttons shown).
+                    row.MouseEnter:Connect(function()
+                        if entry.Interactive then motion(row, { BackgroundTransparency = 0.55 }, 0.12) end
+                    end)
+                    row.MouseLeave:Connect(function() motion(row, { BackgroundTransparency = 1 }, 0.16) end)
+                    row.Activated:Connect(function()
+                        if uiAlive and not dialogOpen and not control.Destroyed and entry.Interactive then
                             control:Set(not control.Value)
                         end
                     end)
-                    entry = { Row = row, Name = name, Shortcut = shortcut, State = state, Check = check }
                     keybindRows[control] = entry
                 end
                 entry.Row.LayoutOrder = index
                 entry.Row.Name = control.Name
-                local name, shortcut, state, check = entry.Name, entry.Shortcut, entry.State, entry.Check
-                name.Text = control.Name
-                bindTheme(name, "TextColor3", control.Value and not control.Disabled and "Text" or "Muted")
+                local on = control.Value and not control.Disabled
+                if on then active = active + 1 end
+                entry.Name.Text = control.Name
+                tween(entry.Name, { TextColor3 = on and "Text" or "Muted" }, 0.16)
+                tween(entry.Dot, { BackgroundColor3 = on and "Accent" or "Muted" }, 0.16)
+                motion(entry.Dot, { BackgroundTransparency = on and 0 or 0.6 }, 0.16)
                 local keys = {}
                 for _, modifier in ipairs({ "Ctrl", "Shift", "Alt" }) do
                     if control.Modifiers[modifier] then table.insert(keys, modifier) end
                 end
-                table.insert(keys, control.Keybind == Enum.KeyCode.Unknown and "?" or control.Keybind.Name)
-                shortcut.Text = table.concat(keys, "+")
-                bindTheme(state, "BackgroundColor3", control.Value and "Accent" or "Navigation")
-                check.Visible = control.Value
-                state.Interactable = control.KeybindMode == "Toggle"
+                local unset = control.Keybind == Enum.KeyCode.Unknown
+                local keyName = unset and "None" or (shortKeyNames[control.Keybind.Name] or control.Keybind.Name)
+                table.insert(keys, keyName)
+                entry.Chip.Text = table.concat(keys, "+")
+                bindTheme(entry.Chip, "TextColor3", unset and "Muted" or "Text")
+                local chipWidth = math.max(22, textWidth(entry.Chip.Text, 11) + 12)
+                entry.Chip.Size = UDim2.fromOffset(chipWidth, 18)
+                local modeText = control.KeybindMode ~= "Toggle" and control.KeybindMode or ""
+                local modeWidth = modeText == "" and 0 or textWidth(modeText, 11) + 8
+                entry.Mode.Text = modeText
+                entry.Mode.Position = UDim2.new(1, -chipWidth - 12, 0, 0)
+                entry.Mode.Size = UDim2.new(0, modeWidth, 1, 0)
+                entry.Name.Size = UDim2.new(1, -(22 + chipWidth + modeWidth + 16), 1, 0)
+                entry.Interactive = control.KeybindMode == "Toggle"
                     and not control.Disabled
                     and keybindMenu.ShowToggleButtons
-                state.Visible = control.KeybindMode ~= "Toggle" or keybindMenu.ShowToggleButtons
             end
+            activeCount.Text = #controls > 0 and (active .. "/" .. #controls) or ""
             if #controls == 0 then
                 if not keybindEmpty then
-                    keybindEmpty = label(keybindList, "No keybinds", 12)
-                    keybindEmpty.Size = UDim2.new(1, 0, 0, 26)
+                    keybindEmpty = label(keybindList, "No keybinds yet", 12)
+                    keybindEmpty.Position = UDim2.fromOffset(8, 0)
+                    keybindEmpty.Size = UDim2.new(1, -8, 0, keybindRowHeight)
                     bindTheme(keybindEmpty, "TextColor3", "Muted")
                 end
             elseif keybindEmpty then
                 keybindEmpty:Destroy()
                 keybindEmpty = nil
             end
-            keybindMenu.Frame.Size = UDim2.fromOffset(280, 40 + math.min(206, math.max(26, #controls * 30 - 4)))
+            local shown = math.clamp(#controls, 1, keybindVisibleRows)
+            keybindMenu.Frame.Size = UDim2.fromOffset(keybindWidth, 48 + shown * keybindRowHeight + (shown - 1) * 2)
         end
         refreshKeybindMenu = function(removedControl)
             -- Remove dead rows even while hidden, so the cache does not retain destroyed controls.
