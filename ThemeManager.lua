@@ -226,7 +226,9 @@ local function newManager()
                 self:GetContrastRatio()
             )
         )
-        local nameBox = saved:AddTextbox({ Name = "Theme name", Default = "My theme", NoSave = true })
+        -- Saved themes: type a name and press Enter (or Save). Overwriting asks first. Set default and Delete
+        -- act on the typed name, or the current theme when the box is empty.
+        local nameBox = saved:AddTextbox({ Name = "Name", Placeholder = "My theme", NoSave = true })
         local function refreshList()
             local values, err = names()
             if not err then
@@ -234,56 +236,55 @@ local function newManager()
                 self:SyncPreset(self.Current)
             end
         end
-        saved:AddButton({
-            Name = "Save",
-            Callback = function()
-                local ok, err = self:SaveCustomTheme(nameBox.Text)
+        local function typedName()
+            local name = nameBox.Text:match("^%s*(.-)%s*$")
+            return name ~= "" and name or self.Current
+        end
+        local function saveTheme()
+            local name = nameBox.Text:match("^%s*(.-)%s*$")
+            local function finish(ok, err)
                 if ok then
                     refreshList()
-                    self:SyncPreset(nameBox.Text)
+                    self:SyncPreset(name)
                 end
                 report("Save theme", ok, err)
-            end,
+            end
+            local ok, err = self:SaveCustomTheme(name)
+            if not ok and tostring(err):find("already exists", 1, true) then
+                showDialog({
+                    Title = "Save theme",
+                    Content = 'Replace "' .. name .. '" with the current theme?',
+                    ConfirmText = "Replace",
+                    OnConfirm = function() finish(self:SaveCustomTheme(name, true)) end,
+                })
+                return
+            end
+            finish(ok, err)
+        end
+        nameBox.FocusLost:Connect(function(enterPressed)
+            if enterPressed and nameBox.Text:match("%S") then saveTheme() end
+        end)
+        saved:AddButton({
+            Name = "Save",
+            Callback = saveTheme,
             Buttons = {
                 {
-                    Name = "Overwrite",
+                    Name = "Set default",
                     Callback = function()
-                        local name = nameBox.Text
-                        if not safeName(name) or self.BuiltInThemes[name] then
-                            report("Overwrite theme", false, "Enter a saved custom theme name")
+                        local name = typedName()
+                        if not name then
+                            report("Default theme", false, "Save this theme first")
                             return
                         end
-                        showDialog({
-                            Title = "Overwrite theme",
-                            Content = 'Replace "' .. name .. '" with the current theme?',
-                            ConfirmText = "Overwrite",
-                            OnConfirm = function()
-                                local ok, err = self:SaveCustomTheme(name, true)
-                                if ok then self:SyncPreset(name) end
-                                report("Overwrite theme", ok, err)
-                            end,
-                        })
+                        report("Default theme", self:SaveDefault(name))
                     end,
                 },
-            },
-        })
-        saved:AddButton({
-            Name = "Set default",
-            Callback = function()
-                if not selector.Value then
-                    report("Default theme", false, "Pick a theme in the Theme tab first")
-                    return
-                end
-                report("Default theme", self:SaveDefault(selector.Value))
-            end,
-            Buttons = {
-                { Name = "Refresh", Callback = refreshList },
                 {
                     Name = "Delete",
                     Callback = function()
-                        local name = selector.Value
+                        local name = typedName()
                         if not name or self.BuiltInThemes[name] then
-                            report("Delete theme", false, "Select a custom theme first")
+                            report("Delete theme", false, "Enter a saved theme name")
                             return
                         end
                         showDialog({
@@ -303,7 +304,6 @@ local function newManager()
                 },
             },
         })
-        saved:AddLabel("Set default and Delete use the theme selected in the Theme tab.")
         local core = bound().Theme
         core.ColorControls, core.FontControl, core.ImageControl =
             self.ColorControls, self.FontControl, self.ImageControl

@@ -266,53 +266,66 @@ local function newManager()
         local files = group:AddTab("Configs")
         local transfer = group:AddTab("JSON")
         if not hasFiles() then
-            files:AddLabel("File storage unavailable. Use the JSON tab to import and export configs.")
+            files:AddLabel("File storage is unavailable here. Use the JSON tab.")
         end
         local function configNames()
             if not hasFiles() then return {} end
             local names, err = self:RefreshConfigList()
-            if err then report("Refresh configs", false, err) end
+            if err then report("Configs", false, err) end
             return names, err
         end
         local selector = files:AddDropdown({ Name = "Config", Options = configNames(), NoSave = true })
-        local status
-        local autoloadBox
+        local autoloadToggle
         local refreshing = false
-        local function refresh()
-            -- SetValues can report a changed selection, which calls back into refresh.
+        -- Re-reads the list after every file change; the selection follows the config being saved to.
+        local function refresh(select)
             if refreshing then return end
             refreshing = true
             local names, err = configNames()
             if not err then pcall(selector.SetValues, selector, names) end
+            if select and table.find(names, select) then pcall(selector.Set, selector, select, true) end
             refreshing = false
-            local autoload = self:GetAutoloadConfig()
-            if autoloadBox then autoloadBox:Set(autoload ~= nil and autoload == selector.Value, true) end
-            if status then
-                status.Text = string.format(
-                    "%s: %s  ·  Autoload: %s",
-                    self.AutoSave and "Auto saving to" or "Active",
-                    self.ActiveConfig or (self.AutoSave and "autosave" or "None"),
-                    autoload or "None"
-                )
+            if autoloadToggle then
+                local autoload = self:GetAutoloadConfig()
+                autoloadToggle:Set(autoload ~= nil and autoload == selector.Value, true)
             end
         end
-        files:AddButton({
+        local function selected(title)
+            if selector.Value then return selector.Value end
+            report(title, false, "Select a config first")
+        end
+        local loadButton = files:AddButton({
             Name = "Load",
             Callback = function()
-                local ok, err = self:Load(selector.Value)
-                refresh()
+                local name = selected("Load config")
+                if not name then return end
+                local ok, err = self:Load(name)
+                refresh(name)
                 report("Load config", ok, err)
             end,
             Buttons = {
-                { Name = "Refresh", Callback = refresh },
+                {
+                    Name = "Save",
+                    Callback = function()
+                        local name = selected("Save config")
+                        if not name then return end
+                        showDialog({
+                            Title = "Save config",
+                            Content = 'Replace "' .. name .. '" with the current settings?',
+                            ConfirmText = "Save",
+                            OnConfirm = function()
+                                local ok, err = self:Overwrite(name)
+                                refresh(name)
+                                report("Save config", ok, err)
+                            end,
+                        })
+                    end,
+                },
                 {
                     Name = "Delete",
                     Callback = function()
-                        local name = selector.Value
-                        if not name then
-                            report("Delete config", false, "Select a saved config first")
-                            return
-                        end
+                        local name = selected("Delete config")
+                        if not name then return end
                         showDialog({
                             Title = "Delete config",
                             Content = 'Delete "' .. name .. '"?',
@@ -328,46 +341,19 @@ local function newManager()
                 },
             },
         })
-        -- Manual saving; disabled while auto save is on.
-        local nameBox = files:AddTextbox({ Name = "New config", Placeholder = "Config name", NoSave = true })
-        local saveButtons = files:AddButton({
-            Name = "Create",
-            Callback = function()
-                local name = nameBox.Text:match("^%s*(.-)%s*$")
-                local ok, err = self:Create(name)
-                if ok then
-                    nameBox.Text = ""
-                    refresh()
-                    selector:Set(name, true)
-                    refresh()
-                end
-                report("Create config", ok, err)
-            end,
-            Buttons = {
-                {
-                    Name = "Save",
-                    Callback = function()
-                        local name = selector.Value
-                        if not name then
-                            report("Save config", false, "Select a saved config first")
-                            return
-                        end
-                        showDialog({
-                            Title = "Save config",
-                            Content = 'Replace "' .. name .. '" with the current settings?',
-                            ConfirmText = "Save",
-                            OnConfirm = function()
-                                local ok, err = self:Overwrite(name)
-                                refresh()
-                                report("Save config", ok, err)
-                            end,
-                        })
-                    end,
-                },
-            },
-        })
-        files:AddDivider()
-        local autoSaveBox = files:AddCheckbox({
+        -- Type a name and press Enter to create a config from the current settings.
+        local nameBox = files:AddTextbox({ Name = "New config", Placeholder = "Name, then Enter", NoSave = true })
+        nameBox.FocusLost:Connect(function(enterPressed)
+            local name = nameBox.Text:match("^%s*(.-)%s*$")
+            if not enterPressed or name == "" then return end
+            local ok, err = self:Create(name)
+            if ok then
+                nameBox.Text = ""
+                refresh(name)
+            end
+            report("Create config", ok, err)
+        end)
+        local autoSaveToggle = files:AddToggle({
             Name = "Auto save",
             Default = self.AutoSave,
             NoSave = true,
@@ -376,8 +362,8 @@ local function newManager()
                 if not ok then report("Auto save", ok, err) end
             end,
         })
-        autoloadBox = files:AddCheckbox({
-            Name = "Load selected on startup",
+        autoloadToggle = files:AddToggle({
+            Name = "Load on startup",
             Default = false,
             NoSave = true,
             Callback = function(value)
@@ -388,30 +374,45 @@ local function newManager()
                     ok, err = self:DeleteAutoLoadConfig()
                 end
                 refresh()
-                if not ok then report("Autoload", ok, err) end
+                if not ok then report("Load on startup", false, err) end
             end,
         })
-        status = files:AddLabel("")
-        selector:OnChanged(refresh)
+        selector:OnChanged(function() refresh() end)
+
+        -- Auto save replaces manual saving: the Save button and the new-config field are hidden while it is on.
+        local row = loadButton.Parent
+        local function arrange(buttons)
+            local count = #buttons
+            for index, button in ipairs(buttons) do
+                button.Size = UDim2.new(1 / count, -6 * (count - 1) / count, 0, 28)
+                button.Position = UDim2.new((index - 1) / count, (index - 1) * 6 / count, 0, 0)
+            end
+        end
+        local saveButton, deleteButton
+        for _, child in ipairs(row:GetChildren()) do
+            if child:IsA("TextButton") and child.Text == "Save" then saveButton = child end
+            if child:IsA("TextButton") and child.Text == "Delete" then deleteButton = child end
+        end
         local function applyAutoSaveState(enabled)
-            autoSaveBox:Set(enabled, true)
-            group:SetControlDisabled(nameBox, enabled)
-            group:SetControlDisabled(saveButtons, enabled)
-            refresh()
+            autoSaveToggle:Set(enabled, true)
+            saveButton.Visible = not enabled
+            arrange(enabled and { loadButton, deleteButton } or { loadButton, saveButton, deleteButton })
+            group:SetControlVisible(nameBox, not enabled)
+            refresh(self.ActiveConfig)
         end
         self.OnAutoSaveChanged = applyAutoSaveState
-        self.OnActiveConfigChanged = function() refresh() end
-        self.OnAutoSaved = function() refresh() end
+        self.OnActiveConfigChanged = function(name) refresh(name) end
+        self.OnAutoSaved = function(name) refresh(name) end
         if not hasFiles() then
-            group:SetControlDisabled(autoSaveBox, true)
-            group:SetControlDisabled(autoloadBox, true)
+            group:SetControlDisabled(autoSaveToggle, true)
+            group:SetControlDisabled(autoloadToggle, true)
         end
         -- Restore the auto save choice from the last session.
         if savedAutoSave(self) then self:SetAutoSave(true) else applyAutoSaveState(self.AutoSave) end
 
         local jsonBox = transfer:AddTextbox({
             Name = "Config JSON",
-            Placeholder = "Paste Viz config JSON",
+            Placeholder = "Paste a config here",
             NoSave = true,
             MultiLine = true,
         })
@@ -433,11 +434,7 @@ local function newManager()
                         end
                         jsonBox.Text = content
                         local copied = type(setclipboard) == "function" and pcall(setclipboard, content)
-                        notify({
-                            Title = "Export config",
-                            Content = copied and "JSON copied to clipboard and shown above."
-                                or "JSON is ready in the Config JSON field.",
-                        })
+                        notify({ Title = "Export config", Content = copied and "Copied to clipboard" or "Ready above" })
                     end,
                 },
             },

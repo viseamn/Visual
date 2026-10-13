@@ -247,7 +247,7 @@ SaveManager:Create("default")       -- refuses to replace an existing file
 SaveManager:Overwrite("default")
 SaveManager:Load("default")
 SaveManager:SaveAutoloadConfig("default")
-SaveManager:SetAutoSave(true)       -- remembered between sessions; turns off manual Create / Save in the panel
+SaveManager:SetAutoSave(true)       -- remembered between sessions; hides the manual Save button and New config field
 SaveManager:SetIgnoreIndexes({ "TemporaryControl" })
 local json = SaveManager:SaveJSON()
 SaveManager:LoadJSON(json)
