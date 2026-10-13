@@ -230,11 +230,12 @@ local function newManager()
                 Callback = function(color) self:ApplyThemeData({ [role] = color }, true) end,
             })
         end
+        local ratio = self:GetContrastRatio()
         self.ContrastLabel = colors:AddLabel(
             string.format(
                 "Text/card contrast: %s (%.1f:1)",
-                self:GetContrastRatio() >= 4.5 and "good" or "low",
-                self:GetContrastRatio()
+                ratio >= 4.5 and "good" or "low",
+                ratio
             )
         )
         local nameBox = saved:AddTextbox({ Name = "Name", Placeholder = "My theme", NoSave = true })

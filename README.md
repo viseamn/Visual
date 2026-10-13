@@ -1,50 +1,33 @@
-<p align="center">
-  <img src="assets/banner.jpg" alt="Viz" width="100%">
+﻿<p align="center">
+  <img src="assets/banner.jpg" alt="Viz — Roblox UI library" width="100%">
 </p>
 
 <p align="center">
-  <b>A clean, glassy UI library for Roblox</b><br>
-  Dockable tab bar · detachable groupboxes · search · keybinds · themes · configs
+  A Roblox UI library with movable panels, keybinds, themes and saved configs.
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/version-1.0.3-white?style=flat-square" alt="Version 1.0.3">
-  <img src="https://img.shields.io/badge/Roblox-Luau-22232E?style=flat-square" alt="Roblox Luau">
-  <img src="https://img.shields.io/badge/icons-Lucide-white?style=flat-square" alt="Lucide icons">
+  <a href="#getting-started">Getting started</a> &nbsp; / &nbsp;
+  <a href="#controls">Controls</a> &nbsp; / &nbsp;
+  <a href="#window">Window</a> &nbsp; / &nbsp;
+  <a href="#themes--configs">Themes &amp; configs</a> &nbsp; / &nbsp;
+  <a href="Example.lua">Full example</a>
 </p>
 
----
+<p align="center">
+  <img src="https://img.shields.io/badge/1.0.3-22232E?style=flat-square&label=Viz" alt="Viz 1.0.3">
+  <img src="https://img.shields.io/badge/Luau-22232E?style=flat-square&label=Roblox" alt="Roblox Luau">
+</p>
 
-## Features
+## Getting started
 
-- **Dock bar** on any screen edge (bottom, top, left, right), with optional auto-hide and a built-in search pill
-- **Groupboxes** that collapse, split into sections, and detach into floating cards by dragging their header
-- **Every common control**: toggle, checkbox, button, slider, range slider, dropdown (single, multi, player, team), textbox, keybind, color picker, label, divider
-- **Toggle keybinds** with a popup to pick *Toggle* or *Hold* and press a key, including Ctrl / Shift / Alt
-- **Global search** that filters tabs, groupboxes and controls as you type
-- **Lucide icons** rendered from an icon font, so they stay sharp at any size
-- **Themes**: 18 presets (dark and light) plus your own, 16 fonts, all applied live
-- **Configs**: save, load, auto save, autoload and JSON import/export
-- **DPI scale** from 50% to 200%, and the window always fits the screen
-
-## Files
-
-| File | Purpose |
-| --- | --- |
-| [`Library.lua`](Library.lua) | Window, tabs, controls, input, animation and theme colors |
-| [`ThemeManager.lua`](ThemeManager.lua) | Theme presets, custom themes and the theme settings panel |
-| [`SaveManager.lua`](SaveManager.lua) | Config files, JSON import/export, ignored controls and autoload |
-| [`Example.lua`](Example.lua) | Every element in one script. Start here |
-
-## Quick start
-
-### Executor
+Run the demo to try the controls:
 
 ```lua
 loadstring(game:HttpGet("https://raw.githubusercontent.com/viseamn/Visual/main/Example.lua"))()
 ```
 
-### Your own script
+Or start with a window and add what you need:
 
 ```lua
 local repo = "https://raw.githubusercontent.com/viseamn/Visual/main/"
@@ -58,29 +41,42 @@ local Window = Library:CreateWindow({
     MenuKey = Enum.KeyCode.RightShift,
 })
 
-local Tabs = {
-    Main = Window:AddTab("Main", "house"),
-    Settings = Window:CreateSettingsTab(),
-}
+local Main = Window:AddTab("Main", "house")
+local Settings = Window:CreateSettingsTab()
+local Group = Main:AddLeftGroupbox("Controls", "sliders-horizontal")
 
-local Group = Tabs.Main:AddLeftGroupbox("Controls", "sliders-horizontal")
-Group:AddToggle("Enabled", { Text = "Enabled", Default = true, Keybind = "F" })
-Group:AddSlider("Speed", { Text = "Speed", Min = 0, Max = 100, Default = 50 })
+Group:AddToggle("Enabled", {
+    Text = "Enabled",
+    Default = true,
+    Keybind = "F",
+})
 
-ThemeManager:SetLibrary(Library)
-SaveManager:SetLibrary(Library)
+Group:AddSlider("Speed", {
+    Text = "Speed",
+    Min = 0,
+    Max = 100,
+    Default = 50,
+    Callback = function(value)
+        print("Speed:", value)
+    end,
+})
+
+ThemeManager:SetLibrary(Window)
+SaveManager:SetLibrary(Window)
 ThemeManager:SetFolder("Viz/MyGame")
 SaveManager:SetFolder("Viz/MyGame")
-SaveManager:BuildConfigSection(Tabs.Settings)
-ThemeManager:ApplyToTab(Tabs.Settings)
+
+SaveManager:BuildConfigSection(Settings)
+ThemeManager:ApplyToTab(Settings)
 
 ThemeManager:LoadDefault()
 SaveManager:LoadAutoloadConfig()
 ```
 
-### Roblox Studio
+<details>
+<summary><b>Using Roblox Studio</b></summary>
 
-Create three ModuleScripts named `Library`, `ThemeManager` and `SaveManager` next to a LocalScript, then swap the `loadstring` lines for `require`:
+Create three ModuleScripts named `Library`, `ThemeManager` and `SaveManager` beside a LocalScript. Replace the three `loadstring` calls with:
 
 ```lua
 local Library = require(script.Parent.Library)
@@ -88,93 +84,140 @@ local ThemeManager = require(script.Parent.ThemeManager)
 local SaveManager = require(script.Parent.SaveManager)
 ```
 
-The UI runs on the client only. Loading the modules does not create a window or load configs by itself.
+Viz runs on the client. In Studio, use JSON import/export with your own storage; executor file functions are unavailable.
+
+</details>
+
+## What's included
+
+| | |
+| :--- | :--- |
+| **Layout** | Dock on any screen edge, auto-hide, draggable and resizable window |
+| **Panels** | Collapsible groupboxes, sections and detachable cards |
+| **Controls** | Toggles, sliders, dropdowns, textboxes, keybinds, color pickers and more |
+| **Search** | Filter tabs, panels and controls as you type |
+| **Appearance** | 18 theme presets, 16 fonts, custom colors and 50–200% DPI scale |
+| **Configs** | Save, load, autosave, startup configs and JSON import/export |
 
 ## Controls
 
-Give each saved control a unique string ID. You can change the display text later without breaking saved configs.
+Use a unique string ID for each saved control. Changing its label later won't break existing configs.
 
 ```lua
-Group:AddToggle("MyToggle", { Text = "Toggle", Default = false, Keybind = "F", Mode = "Toggle" })
+Group:AddToggle("MyToggle", { Text = "Toggle", Default = false })
 Group:AddCheckbox("MyCheckbox", { Text = "Checkbox", Default = false })
-Group:AddButton({ Text = "Button", Callback = function() print("Pressed") end })
-Group:AddButton({ Text = "Left", Callback = print, Buttons = { { Name = "Right", Callback = print } } }) -- one row
-Group:AddSlider("MySlider", { Text = "Slider", Min = 0, Max = 100, Default = 50, Suffix = "%" })
+Group:AddSlider("MySlider", { Text = "Slider", Min = 0, Max = 100, Default = 50 })
 Group:AddRangeSlider("MyRange", { Text = "Range", Min = 0, Max = 100, Default = { 20, 80 } })
 Group:AddInput("MyInput", { Text = "Textbox", Placeholder = "Type here" })
 Group:AddKeybind("MyKey", { Text = "Keybind", Default = Enum.KeyCode.G })
 Group:AddColorPicker("MyColor", { Text = "Color", Default = Color3.fromRGB(255, 255, 255) })
 Group:AddDropdown("MyDropdown", { Text = "Dropdown", Values = { "One", "Two" }, Default = "One" })
-Group:AddDropdown("MyMulti", { Text = "Multi", Values = { "A", "B", "C" }, Multi = true, Default = { "A" } })
-Group:AddDropdown("MyPlayer", { Text = "Player", SpecialType = "Player" })
+Group:AddDropdown("MyMulti", { Text = "Multi", Values = { "A", "B", "C" }, Multi = true })
+Group:AddButton({ Text = "Button", Callback = function() print("Pressed") end })
 Group:AddLabel("Status: ready")
 Group:AddDivider()
 ```
 
-Read and change values through `Library.Toggles` and `Library.Options`:
+Read values or update controls through `Library.Toggles` and `Library.Options`:
 
 ```lua
 local Toggles, Options = Library.Toggles, Library.Options
 
 print(Toggles.MyToggle.Value)
 Options.MySlider:SetValue(75)
-Toggles.MyToggle:OnChanged(function(value) print("Toggle:", value) end)
+Toggles.MyToggle:OnChanged(function(value)
+    print("Toggle:", value)
+end)
 ```
 
-Most controls accept `Callback`, `Tooltip`, `Disabled`, `Visible` and `NoSave`.
+Most controls accept `Callback`, `Tooltip`, `Disabled`, `Visible` and `NoSave`. See [Example.lua](Example.lua) for every control type.
 
 <details>
-<summary><b>Toggles and keybinds</b></summary>
+<summary><b>Toggles &amp; keybinds</b></summary>
 
-<br>
+Click a toggle or drag its thumb. A drag commits on release.
 
-- Click the switch or drag its thumb. A drag commits when you release.
-- Click the key box next to a toggle to open its popup. Pick **Toggle** or **Hold**, then click the box below and press a key. **Backspace** clears the key and **Escape** cancels.
-- A toggle has no key box until you give it one, like Obsidian: `Toggles.MyToggle:AddKeyPicker("MyKey", { Default = "F", Mode = "Hold", Text = "My toggle" })`. `NoUI = true` keeps it out of the keybind list. `Options.MyKey:SetValue({ "G", "Toggle" })` changes it.
-- The shorthand `Keybind = "F"` in the toggle's options also adds the key box. Other options: `Mode = "Toggle"` / `"Hold"` / `"Always"`, `Modifiers = { Ctrl = true }`.
-- `Notify = true` (or `false`) adds a bell icon that turns the on/off notification for that toggle on or off. Without it there is no bell and no notification.
-- `Toggles.MyToggle:AddColorPicker({ Default = ... })` adds a color swatch to the row.
-- `AddKeybind` is a key picker only. It does not run an action by itself.
+```lua
+Toggles.MyToggle:AddKeyPicker("MyKey", {
+    Default = "F",
+    Mode = "Hold",
+    Text = "My toggle",
+})
+
+Options.MyKey:SetValue({ "G", "Toggle" })
+Toggles.MyToggle:AddColorPicker({ Default = Color3.fromRGB(255, 255, 255) })
+```
+
+- `Keybind = "F"` in the toggle options is shorthand for adding a key picker.
+- Modes: `"Toggle"`, `"Hold"` and `"Always"`. Add modifiers with `Modifiers = { Ctrl = true }`.
+- Click the key box to open the picker. **Backspace** clears the key; **Escape** cancels.
+- `NoUI = true` leaves the binding out of the keybind list.
+- Set `Notify = true` or `false` to add the notification bell. Omit it to leave the bell out.
+- `AddKeybind` picks a key; it doesn't run an action by itself.
 
 </details>
 
 <details>
 <summary><b>Dropdowns</b></summary>
 
-<br>
+`Values` accepts a list or a map of keys to labels. Multi dropdowns return a selection map, such as `{ A = true, C = true }`.
 
-- `Values` can be a list or a `{ key = "Label" }` table. `Multi = true` allows several choices.
-- `Searchable = false` hides the search box, and `MaxVisibleDropdownItems` sets how many rows show before scrolling.
-- `SpecialType = "Player"` or `"Team"` keeps the list in sync with the server. Player rows show the player's avatar; turn that off with `EnablePlayerImages = false`.
-- `ValueImages = { key = "rbxassetid://..." }` puts an image on any row.
-- `DisabledValues`, `AllowNull`, `FormatDisplayValue` and `DragSelect` are also supported.
+```lua
+Group:AddDropdown("Players", { Text = "Player", SpecialType = "Player" })
+Group:AddDropdown("Teams", { Text = "Team", SpecialType = "Team" })
+```
+
+| Option | Effect |
+| :--- | :--- |
+| `Multi = true` | Select several values |
+| `Searchable = false` | Hide the search box |
+| `MaxVisibleDropdownItems` | Set the number of rows before scrolling |
+| `SpecialType = "Player"` or `"Team"` | Keep the list in sync with the server |
+| `EnablePlayerImages = false` | Hide player avatars |
+| `ValueImages = { key = "rbxassetid://..." }` | Add images to rows |
+| `DisabledValues` | Disable specific values |
+| `AllowNull` | Allow an empty selection |
+| `FormatDisplayValue` | Customize the selected-value text |
+| `DragSelect` | Select multiple rows by dragging |
 
 </details>
 
 <details>
 <summary><b>Textbox validation</b></summary>
 
-<br>
-
 ```lua
 local Input = Group:AddInput("Count", {
-    Text = "Count", Default = "10", Numeric = true, MaxLength = 3,
-    AllowEmpty = false, EmptyReset = "10", Finished = true,
-    VerifyValue = function(text) return tonumber(text) <= 100 end,
+    Text = "Count",
+    Default = "10",
+    Numeric = true,
+    MaxLength = 3,
+    AllowEmpty = false,
+    EmptyReset = "10",
+    Finished = true,
+    VerifyValue = function(text)
+        return tonumber(text) <= 100
+    end,
 })
-Group:GetControl(Input):OnChanged(function(value) print(value) end)
+
+Group:GetControl(Input):OnChanged(function(value)
+    print(value)
+end)
 ```
 
-- `Finished = true` commits on Enter. `Finished = false` commits while typing. Leaving it out commits when the box loses focus.
-- An invalid edit goes back to the last valid value. `MaxLength` counts Unicode characters.
-- `ClearTextOnFocus` and `ClearTextOnBlur` are supported.
+`Finished = true` commits on Enter; `false` commits while typing. Omit it to commit on focus loss. Invalid edits revert to the last valid value. `MaxLength` counts Unicode characters.
+
+`ClearTextOnFocus` and `ClearTextOnBlur` are also available.
 
 </details>
 
 <details>
-<summary><b>Dependency boxes</b></summary>
+<summary><b>Panels, sections &amp; dependencies</b></summary>
 
-<br>
+Use `Tab:AddLeftGroupbox(name, icon)` or `AddRightGroupbox(name, icon)`. Icons use [Lucide](https://lucide.dev/icons) names. `Group:AddTab("General")` adds a section inside a panel.
+
+Drag a panel's header outside the window to detach it. Drop it back inside to reattach. You can also call `SetCollapsed`, `ToggleCollapsed`, `Detach`, `Attach` and `IsDetached`.
+
+Dependency boxes show their rows when every condition matches:
 
 ```lua
 local Dep = Group:AddDependencyBox()
@@ -182,20 +225,21 @@ Dep:AddSlider("Strength", { Text = "Strength", Min = 1, Max = 10, Default = 5 })
 Dep:SetupDependencies({ { Toggles.MyToggle, true } })
 ```
 
-The rows show only while every `{ control, value }` pair matches. For a multi dropdown, the key just needs to be selected.
+For a multi dropdown, the expected key must be selected.
 
-</details>
+`Group:GetControl(control)` returns the API for a control, including `SetText`, `SetDisabled`, `SetVisible`, `OnChanged` and `Destroy`.
 
-<details>
-<summary><b>Groupboxes and sections</b></summary>
+To put buttons on the same row:
 
-<br>
-
-- `Tab:AddLeftGroupbox(name, icon)` / `AddRightGroupbox(name, icon)`. Icons are [Lucide](https://lucide.dev/icons) names.
-- `Group:AddTab("General")` adds a section strip inside the groupbox.
-- Drag a groupbox header out of the window to detach it, and drop it back inside to attach it again.
-- `SetCollapsed`, `ToggleCollapsed`, `Detach`, `Attach` and `IsDetached` are available.
-- `Group:GetControl(x)` returns the control API (`SetText`, `SetDisabled`, `SetVisible`, `OnChanged`, `Destroy`) for any control.
+```lua
+Group:AddButton({
+    Text = "Left",
+    Callback = function() print("Left") end,
+    Buttons = {
+        { Name = "Right", Callback = function() print("Right") end },
+    },
+})
+```
 
 </details>
 
@@ -205,14 +249,19 @@ The rows show only while every `{ control, value }` pair matches. For a multi dr
 local Window = Library:CreateWindow({
     Title = "Viz",
     Size = Vector2.new(640, 460),
-    Layout = "Bottom bar",          -- Bottom bar, Top bar, Left bar, Right bar
-    SearchStyle = "Bar",            -- Bar (in the dock) or Header (in the window)
+    Layout = "Bottom bar",
+    SearchStyle = "Bar",
     MenuKey = Enum.KeyCode.RightShift,
-    AutoHide = false,               -- hide the dock until the mouse reaches the edge
+    AutoHide = false,
     NotificationPosition = "BottomRight",
-    DPIScale = 1,                   -- 0.5 to 2
+    DPIScale = 1,
 })
 ```
+
+`Layout` accepts `"Bottom bar"`, `"Top bar"`, `"Left bar"` or `"Right bar"`. `SearchStyle` accepts `"Bar"` or `"Header"`.
+
+<details>
+<summary><b>Window methods</b></summary>
 
 ```lua
 Window:Toggle()
@@ -223,55 +272,98 @@ Window:SetAutoHide(true)
 Window:SetDPIScale("125%")
 Window:SetSize(Vector2.new(700, 480))
 Window:SetSearch("speed")
+
 Window:Notify({ Title = "Viz", Content = "Ready", Icon = "check" })
-Window:Dialog({ Title = "Continue?", Content = "Confirm this action.", OnConfirm = function() end })
+Window:Dialog({
+    Title = "Continue?",
+    Content = "Confirm this action.",
+    OnConfirm = function() end,
+})
+
 Library:Unload()
 ```
 
-Players can change the bar position, search style, auto-hide, keybind menu, menu key, notification position and DPI scale in **Settings > Appearance > Interface** (from `ThemeManager:ApplyToTab`). Without ThemeManager, `CreateSettingsTab` shows these in an Interface card instead, or place them yourself with `Window:AddInterfaceControls(section)`. Drag the window anywhere, even partly off screen, and resize it from the bottom-right corner.
+With ThemeManager, interface settings live under **Settings → Appearance → Interface**. Otherwise, `CreateSettingsTab` adds an Interface card. Use `Window:AddInterfaceControls(section)` to place them yourself.
 
-## Themes and configs
+Drag the window to move it; drag the bottom-right corner to resize it. A floating show/hide button is enabled by default on touch devices. Set `ToggleButton = true` to enable it elsewhere.
+
+</details>
+
+## Themes & configs
+
+Both managers accept a window or the library through `SetLibrary`. Create your controls before loading a config. Call `SetLibrary` again after replacing a window.
 
 ```lua
--- Dark: Default, Orchid, Black, Mint, Nord, Dracula, Catppuccin, Tokyo Night, Gruvbox, One Dark,
--- Rose Pine, Monokai, Solarized, Ocean, Crimson. Light: Light, Latte, Sakura. Presets keep the font.
 ThemeManager:ApplyTheme("Tokyo Night")
 ThemeManager:ApplyThemeData({ Accent = Color3.fromRGB(87, 212, 178) })
--- BuilderSans, Gotham, SourceSans, Roboto, Montserrat, Nunito, Ubuntu, Arimo, JosefinSans,
--- TitilliumWeb, Oswald, Jura, Michroma, FredokaOne, Code, RobotoMono
 ThemeManager:ApplyThemeData({ Font = "Montserrat" })
 ThemeManager:SaveCustomTheme("My theme")
 ThemeManager:SaveDefault("My theme")
 
-SaveManager:Create("default")       -- refuses to replace an existing file
+SaveManager:Create("default")
 SaveManager:Overwrite("default")
 SaveManager:Load("default")
 SaveManager:SaveAutoloadConfig("default")
-SaveManager:SetAutoSave(true)       -- remembered between sessions; hides the manual Save button and New config field
+SaveManager:SetAutoSave(true)
 SaveManager:SetIgnoreIndexes({ "TemporaryControl" })
-local json = SaveManager:SaveJSON()
-SaveManager:LoadJSON(json)
+```
+
+`Create` refuses to replace an existing config. Use `Overwrite` to replace one. File save/load methods return `ok, err`:
+
+```lua
+local ok, err = SaveManager:Load("default")
+if not ok then warn(err) end
 ```
 
 <details>
-<summary><b>Notes</b></summary>
+<summary><b>Presets &amp; fonts</b></summary>
 
-<br>
+**Dark:** Default, Orchid, Black, Mint, Nord, Dracula, Catppuccin, Tokyo Night, Gruvbox, One Dark, Rose Pine, Monokai, Solarized, Ocean, Crimson.
 
-- File operations need the executor's file functions. In Studio, use `SaveJSON` / `LoadJSON` with your own storage.
-- File and config methods return `ok, err`.
-- Auto save checks once a second and writes only when something changed. It writes to the config you last loaded, created or saved (`SaveManager:GetActiveConfig()`), or to `autosave` if there is none. Just selecting a config in the list never makes it the target.
-- Configs and themes are validated before they are applied, and a failed load rolls back. Unknown IDs are ignored, so old configs keep working after you remove a control.
-- Create all tabs and controls before loading a config. After replacing a window, call `SetLibrary` again.
-- On touch devices, Viz uses plain Frames instead of CanvasGroups so the UI does not render blank when texture memory runs out. Force a mode with `CanvasGroups = true` / `false` in `CreateWindow`.
-- Icons need `getcustomasset` to load the Lucide font. Without it, Viz falls back to a built-in sprite set with fewer icons.
+**Light:** Light, Latte, Sakura.
+
+Presets keep the current font. Available fonts: BuilderSans, Gotham, SourceSans, Roboto, Montserrat, Nunito, Ubuntu, Arimo, JosefinSans, TitilliumWeb, Oswald, Jura, Michroma, FredokaOne, Code and RobotoMono.
 
 </details>
 
+<details>
+<summary><b>Autosave &amp; JSON</b></summary>
+
+Autosave checks once a second and writes only when data changes. It saves to the last config you loaded, created or saved, or to `autosave` if there isn't one. Selecting a config in the list doesn't change the save target.
+
+```lua
+print(SaveManager:GetActiveConfig())
+SaveManager.AutoSaveInterval = 2
+SaveManager:SetAutoSave(true)
+
+local json = SaveManager:SaveJSON()
+local ok, err = SaveManager:LoadJSON(json)
+```
+
+The autosave preference is remembered between sessions. When enabled, the manual Save button and New config field are hidden.
+
+Configs are validated before applying values. A failed application rolls back; a callback error is reported after values have loaded. Unknown control IDs are ignored. Changing the manager's folder or window stops autosave and clears the active config.
+
+</details>
+
+<details>
+<summary><b>Runtime notes</b></summary>
+
+- File storage requires executor file functions. JSON import/export works with your own storage.
+- On touch devices, Viz uses Frames instead of CanvasGroups to reduce texture-memory issues. Override this with `CanvasGroups = true` or `false` in `CreateWindow`.
+- The Lucide font needs `getcustomasset`. Without it, Viz uses a smaller built-in icon sprite set.
+
+</details>
+
+## Source
+
+| File | Contents |
+| :--- | :--- |
+| [Library.lua](Library.lua) | Window, panels, controls, input and animation |
+| [ThemeManager.lua](ThemeManager.lua) | Theme presets, custom themes and appearance settings |
+| [SaveManager.lua](SaveManager.lua) | Config files, autosave, startup loading and JSON |
+| [Example.lua](Example.lua) | A working example of every control |
+
 ## Credits
 
-- Some features and API names are adapted from [Obsidian](https://github.com/deividcomsono/Obsidian) by deividcomsono (MIT).
-- Icons by [Lucide](https://lucide.dev), loaded through [lucide-roblox-direct](https://github.com/notpoiu/lucide-roblox-direct).
-
-## For who found this in httpspy
-- Share and stars this repo tytyty
+Some features and API names are adapted from [Obsidian](https://github.com/deividcomsono/Obsidian) by deividcomsono. Icons are from [Lucide](https://lucide.dev), loaded through [lucide-roblox-direct](https://github.com/notpoiu/lucide-roblox-direct).

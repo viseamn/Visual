@@ -95,15 +95,37 @@ local function newManager()
     end
     SaveManager.AutoSave = false
     SaveManager.AutoSaveInterval = 1
-    local function markActive(self, name)
+    local function markActive(self, name, savedData)
         self.ActiveConfig = name
-        local ok, data = pcall(snapshot, self)
-        lastWritten = ok and data or nil
+        if savedData then
+            lastWritten = savedData
+        else
+            local ok, data = pcall(snapshot, self)
+            lastWritten = ok and data or nil
+        end
         callback(self, "OnActiveConfigChanged", name)
     end
     function SaveManager:GetActiveConfig() return self.ActiveConfig end
+    local function unchanged(self)
+        if not lastWritten then return false end
+        local count = 0
+        for id, entry in pairs(controlRegistry) do
+            if not self.Ignore[id] then
+                count = count + 1
+                local previous = lastWritten.Controls[id]
+                if not previous or previous.Type ~= entry.Kind or not same(entry.Read(), previous.Value) then
+                    return false
+                end
+            end
+        end
+        for _ in pairs(lastWritten.Controls) do count = count - 1 end
+        if count ~= 0 then return false end
+        if self.IgnoreTheme then return lastWritten.Theme == nil end
+        return same(context.ExportTheme(), lastWritten.Theme)
+    end
     local function autoSaveStep(self)
         if loading or (context.IsLoading and context.IsLoading()) then return end
+        if unchanged(self) then return end
         local ok, data = pcall(snapshot, self)
         if not ok then error(data) end
         if same(data, lastWritten) then return end
@@ -115,7 +137,7 @@ local function newManager()
             return
         end
         lastWritten = data
-        if not self.ActiveConfig then markActive(self, name) end
+        if not self.ActiveConfig then markActive(self, name, data) end
         callback(self, "OnAutoSaved", name)
     end
     function SaveManager:SetAutoSave(enabled)
@@ -249,10 +271,14 @@ local function newManager()
         return result, err
     end
     function SaveManager:Save(name)
-        local ok, content = pcall(function() return self:SaveJSON() end)
+        local savedData
+        local ok, content = pcall(function()
+            savedData = snapshot(self)
+            return HttpService:JSONEncode(savedData)
+        end)
         if not ok then return false, content end
         local written, err = writeJSON(self, "configs", name, content)
-        if written then markActive(self, name) end
+        if written then markActive(self, name, savedData) end
         return written, err
     end
     function SaveManager:Create(name)
@@ -452,7 +478,9 @@ local function newManager()
         end
         self.OnAutoSaveChanged = applyAutoSaveState
         self.OnActiveConfigChanged = function(name) refresh(name) end
-        self.OnAutoSaved = function(name) refresh(name) end
+        self.OnAutoSaved = function(name)
+            if selector.Value ~= name then refresh(name) end
+        end
         if not hasFiles() then
             group:SetControlDisabled(autoSaveToggle, true)
             group:SetControlDisabled(autoloadToggle, true)

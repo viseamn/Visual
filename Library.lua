@@ -1800,6 +1800,14 @@ function Library:CreateWindow(config)
     screen.Destroying:Connect(function() finishColorDrag() end)
 
     local dropdownData = {}
+    local function arraySet(source)
+        local result = {}
+        for index = 1, #source do
+            local value = source[index]
+            if value ~= nil and value == value then result[value] = true end
+        end
+        return result
+    end
     function dropdownData.Normalize(source)
         assert(type(source) == "table", "Dropdown values must be a table")
         local array, count = true, #source
@@ -1822,6 +1830,7 @@ function Library:CreateWindow(config)
                 end
             end
         else
+            local sortLabels = {}
             for key, value in pairs(source) do
                 assert(
                     type(key) == "string" or type(key) == "number",
@@ -1829,9 +1838,10 @@ function Library:CreateWindow(config)
                 )
                 table.insert(keys, key)
                 labels[key] = tostring(value)
+                sortLabels[key] = string.lower(labels[key])
             end
             table.sort(keys, function(a, b)
-                local x, y = string.lower(labels[a]), string.lower(labels[b])
+                local x, y = sortLabels[a], sortLabels[b]
                 if x == y then return tostring(a) < tostring(b) end
                 return x < y
             end)
@@ -1842,8 +1852,9 @@ function Library:CreateWindow(config)
         if not multi then return table.find(keys, value) and value or nil end
         local result = {}
         if type(value) ~= "table" then return result end
+        local selected = arraySet(value)
         for _, key in ipairs(keys) do
-            if value[key] == true or table.find(value, key) then result[key] = true end
+            if value[key] == true or selected[key] then result[key] = true end
         end
         return result
     end
@@ -1859,8 +1870,9 @@ function Library:CreateWindow(config)
     end
     function dropdownData.Disabled(source, keys, labels)
         local result = {}
+        local disabled = arraySet(source)
         for _, key in ipairs(keys) do
-            if source[key] == true or table.find(source, key) or table.find(source, labels[key]) then
+            if source[key] == true or disabled[key] or disabled[labels[key]] then
                 result[key] = true
             end
         end
@@ -1869,10 +1881,11 @@ function Library:CreateWindow(config)
     function dropdownData.Valid(value, keys, multi)
         if not multi then return value == nil or table.find(keys, value) ~= nil end
         if type(value) ~= "table" then return false end
+        local validKeys, count = arraySet(keys), #value
         for key, item in pairs(value) do
             if item == true then
-                if not table.find(keys, key) then return false end
-            elseif type(key) ~= "number" or key % 1 ~= 0 or key < 1 or key > #value or not table.find(keys, item) then
+                if not validKeys[key] then return false end
+            elseif type(key) ~= "number" or key % 1 ~= 0 or key < 1 or key > count or not validKeys[item] then
                 return false
             end
         end
@@ -3828,8 +3841,12 @@ function Library:CreateWindow(config)
                         nextValues[key] = newLabels[key]
                     end
                 else
+                    local existing = arraySet(nextValues)
                     for _, key in ipairs(keys) do
-                        if not table.find(nextValues, key) then table.insert(nextValues, key) end
+                        if not existing[key] then
+                            table.insert(nextValues, key)
+                            existing[key] = true
+                        end
                     end
                 end
                 self:SetValues(nextValues)
@@ -5546,6 +5563,8 @@ function Library:CreateWindow(config)
             os.clock()
         )
         local target = dockExpanded and 1 or 0
+        local hoverTarget = revealHover and 1 or 0
+        if dockProgress == target and dockVelocity == 0 and revealHoverAmount == hoverTarget then return end
         local omega, damping = 18, 0.86
         local frequency = omega * math.sqrt(1 - damping * damping)
         local offset = dockProgress - target
@@ -5559,7 +5578,7 @@ function Library:CreateWindow(config)
             dockProgress, dockVelocity = target, 0
         end
         revealHoverAmount = revealHoverAmount
-            + ((revealHover and 1 or 0) - revealHoverAmount) * (1 - math.exp(-16 * dt))
+            + (hoverTarget - revealHoverAmount) * (1 - math.exp(-16 * dt))
         renderDock()
     end))
     local function windowAnchor()
