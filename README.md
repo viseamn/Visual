@@ -270,5 +270,8 @@ SaveManager:LoadJSON(json)
 
 ## Credits
 
-- Some features and API names are adapted from [Obsidian](https://github.com/deividcomsono/Obsidian) by deividcomsono (MIT). The license notice is at the top of `Library.lua`; keep it when you redistribute.
+- Some features and API names are adapted from [Obsidian](https://github.com/deividcomsono/Obsidian) by deividcomsono (MIT).
 - Icons by [Lucide](https://lucide.dev), loaded through [lucide-roblox-direct](https://github.com/notpoiu/lucide-roblox-direct).
+
+## For who found this in httpspy
+- Share and stars this repo tytyty
