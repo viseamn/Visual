@@ -23,8 +23,8 @@
 - **Toggle keybinds** with a popup to pick *Toggle* or *Hold* and press a key, including Ctrl / Shift / Alt
 - **Global search** that filters tabs, groupboxes and controls as you type
 - **Lucide icons** rendered from an icon font, so they stay sharp at any size
-- **Themes**: Default, Light, Black, Mint, Nord, Dracula, or your own, all applied live
-- **Configs**: save, load, autoload and JSON import/export
+- **Themes**: 18 presets (dark and light) plus your own, 16 fonts, all applied live
+- **Configs**: save, load, auto save, autoload and JSON import/export
 - **DPI scale** from 50% to 200%, and the window always fits the screen
 
 ## Files
@@ -98,6 +98,7 @@ Give each saved control a unique string ID. You can change the display text late
 Group:AddToggle("MyToggle", { Text = "Toggle", Default = false, Keybind = "F", Mode = "Toggle" })
 Group:AddCheckbox("MyCheckbox", { Text = "Checkbox", Default = false })
 Group:AddButton({ Text = "Button", Callback = function() print("Pressed") end })
+Group:AddButton({ Text = "Left", Callback = print, Buttons = { { Name = "Right", Callback = print } } }) -- one row
 Group:AddSlider("MySlider", { Text = "Slider", Min = 0, Max = 100, Default = 50, Suffix = "%" })
 Group:AddRangeSlider("MyRange", { Text = "Range", Min = 0, Max = 100, Default = { 20, 80 } })
 Group:AddInput("MyInput", { Text = "Textbox", Placeholder = "Type here" })
@@ -227,13 +228,18 @@ Window:Dialog({ Title = "Continue?", Content = "Confirm this action.", OnConfirm
 Library:Unload()
 ```
 
-Players can change the bar position, search style, auto-hide, DPI scale, notification position and menu key from the **Settings** tab. Drag the window anywhere, even partly off screen, and resize it from the bottom-right corner.
+Players can change the bar position, search style, auto-hide, keybind menu, menu key, notification position and DPI scale in **Settings > Appearance > Interface** (from `ThemeManager:ApplyToTab`). Without ThemeManager, `CreateSettingsTab` shows these in an Interface card instead, or place them yourself with `Window:AddInterfaceControls(section)`. Drag the window anywhere, even partly off screen, and resize it from the bottom-right corner.
 
 ## Themes and configs
 
 ```lua
-ThemeManager:ApplyTheme("Light")   -- Default, Light, Black, Mint, Nord, Dracula
+-- Dark: Default, Orchid, Black, Mint, Nord, Dracula, Catppuccin, Tokyo Night, Gruvbox, One Dark,
+-- Rose Pine, Monokai, Solarized, Ocean, Crimson. Light: Light, Latte, Sakura. Presets keep the font.
+ThemeManager:ApplyTheme("Tokyo Night")
 ThemeManager:ApplyThemeData({ Accent = Color3.fromRGB(87, 212, 178) })
+-- BuilderSans, Gotham, SourceSans, Roboto, Montserrat, Nunito, Ubuntu, Arimo, JosefinSans,
+-- TitilliumWeb, Oswald, Jura, Michroma, FredokaOne, Code, RobotoMono
+ThemeManager:ApplyThemeData({ Font = "Montserrat" })
 ThemeManager:SaveCustomTheme("My theme")
 ThemeManager:SaveDefault("My theme")
 
@@ -241,6 +247,7 @@ SaveManager:Create("default")       -- refuses to replace an existing file
 SaveManager:Overwrite("default")
 SaveManager:Load("default")
 SaveManager:SaveAutoloadConfig("default")
+SaveManager:SetAutoSave(true)       -- remembered between sessions; turns off manual Create / Save in the panel
 SaveManager:SetIgnoreIndexes({ "TemporaryControl" })
 local json = SaveManager:SaveJSON()
 SaveManager:LoadJSON(json)
@@ -253,6 +260,7 @@ SaveManager:LoadJSON(json)
 
 - File operations need the executor's file functions. In Studio, use `SaveJSON` / `LoadJSON` with your own storage.
 - File and config methods return `ok, err`.
+- Auto save checks once a second and writes only when something changed. It writes to the config you last loaded, created or saved (`SaveManager:GetActiveConfig()`), or to `autosave` if there is none. Just selecting a config in the list never makes it the target.
 - Configs and themes are validated before they are applied, and a failed load rolls back. Unknown IDs are ignored, so old configs keep working after you remove a control.
 - Create all tabs and controls before loading a config. After replacing a window, call `SetLibrary` again.
 - On touch devices, Viz uses plain Frames instead of CanvasGroups so the UI does not render blank when texture memory runs out. Force a mode with `CanvasGroups = true` / `false` in `CreateWindow`.

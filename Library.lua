@@ -343,18 +343,37 @@ function Library:CreateWindow(config)
     end
     local fontBindings = {}
     local fontName = "BuilderSans"
+    -- Font name -> Roblox font family. Families carry their own weights, so medium text (titles, buttons)
+    -- stays medium in every font; a family without that weight falls back to its nearest one.
+    local fontOrder = {
+        "BuilderSans", "Gotham", "SourceSans", "Roboto", "Montserrat", "Nunito", "Ubuntu", "Arimo",
+        "JosefinSans", "TitilliumWeb", "Oswald", "Jura", "Michroma", "FredokaOne", "Code", "RobotoMono",
+    }
     local fontChoices = {
-        BuilderSans = Enum.Font.BuilderSans,
-        Code = Enum.Font.Code,
-        Gotham = Enum.Font.Gotham,
-        SourceSans = Enum.Font.SourceSans,
+        BuilderSans = "rbxasset://fonts/families/BuilderSans.json",
+        Gotham = "rbxasset://fonts/families/GothamSSm.json",
+        SourceSans = "rbxasset://fonts/families/SourceSansPro.json",
+        Roboto = "rbxasset://fonts/families/Roboto.json",
+        Montserrat = "rbxasset://fonts/families/Montserrat.json",
+        Nunito = "rbxasset://fonts/families/Nunito.json",
+        Ubuntu = "rbxasset://fonts/families/Ubuntu.json",
+        Arimo = "rbxasset://fonts/families/Arimo.json",
+        JosefinSans = "rbxasset://fonts/families/JosefinSans.json",
+        TitilliumWeb = "rbxasset://fonts/families/TitilliumWeb.json",
+        Oswald = "rbxasset://fonts/families/Oswald.json",
+        Jura = "rbxasset://fonts/families/Jura.json",
+        Michroma = "rbxasset://fonts/families/Michroma.json",
+        FredokaOne = "rbxasset://fonts/families/FredokaOne.json",
+        Code = "rbxasset://fonts/families/Inconsolata.json",
+        RobotoMono = "rbxasset://fonts/families/RobotoMono.json",
     }
     local function setUIFont(object, medium)
         if fontBindings[object] == nil then object.Destroying:Connect(function() fontBindings[object] = nil end) end
         fontBindings[object] = medium == true
-        local font = fontName == "BuilderSans" and (medium and Enum.Font.BuilderSansMedium or Enum.Font.BuilderSans)
-            or fontChoices[fontName]
-        object.FontFace = Font.fromEnum(font)
+        object.FontFace = Font.new(
+            fontChoices[fontName] or fontChoices.BuilderSans,
+            medium and Enum.FontWeight.Medium or Enum.FontWeight.Regular
+        )
     end
     local controlRegistry = {}
     local Options, Toggles = {}, {}
@@ -404,6 +423,7 @@ function Library:CreateWindow(config)
     local glassOpacityFactor = 1
     local darkSheen = ColorSequence.new(Color3.new(1, 1, 1), Color3.fromRGB(220, 213, 239))
     local lightSheen = ColorSequence.new(Color3.new(1, 1, 1), Color3.fromRGB(244, 243, 248))
+    local glassRimColor = Color3.fromRGB(232, 225, 255)
     -- Halo glow: concentric translucent rounded frames, densest at the element's edge and fading out.
     -- Built from frames rather than a blurred image so it stays soft at any size and needs no asset.
     -- More, fainter rings give a smoother falloff; together they peak at roughly 24% opacity.
@@ -453,6 +473,11 @@ function Library:CreateWindow(config)
                 info.Sheen.Color = light and lightSheen or darkSheen
                 if info.Transparency < 1 then
                     object.BackgroundTransparency = info.Transparency * glassOpacityFactor
+                end
+                if info.Rim then
+                    info.Rim.Color = light and Theme.Border or glassRimColor
+                    -- Only rims glassSurface made itself have a fixed transparency; others are animated.
+                    if info.OwnRim then info.Rim.Transparency = light and 0.15 or 0.78 end
                 end
             end
         end
@@ -545,14 +570,19 @@ function Library:CreateWindow(config)
         sheen.Rotation = 110
         sheen.Color = glassOpacityFactor < 1 and lightSheen or darkSheen
         sheen.Parent = object
-        glassSurfaces[object] = { Transparency = transparency, Sheen = sheen }
+        local info = { Transparency = transparency, Sheen = sheen }
+        glassSurfaces[object] = info
         local rim = existingStroke or Instance.new("UIStroke")
+        -- Rims in the fixed glass white vanish on light themes; refreshGlass swaps them to the border color.
+        if not existingStroke or rim.Color == glassRimColor then
+            info.Rim, info.OwnRim = rim, not existingStroke
+        end
         rim.Name = "GlassRim"
         rim.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
         rim.Thickness = 1
         if not existingStroke then
-            rim.Color = Color3.fromRGB(232, 225, 255)
-            rim.Transparency = 0.78
+            rim.Color = glassOpacityFactor < 1 and Theme.Border or glassRimColor
+            rim.Transparency = glassOpacityFactor < 1 and 0.15 or 0.78
         end
         local reflection = Instance.new("UIGradient")
         reflection.Rotation = 65
@@ -3047,20 +3077,33 @@ function Library:CreateWindow(config)
             if options.ColorPicker then control:AddColorPicker(options.ColorPicker) end
             return control
         end
+        -- `Buttons = {{Name = ..., Callback = ...}, ...}` adds more buttons to the same row, split evenly with
+        -- the 6px list gap between them. The first button is returned; the rest are its row's siblings.
         function group:AddButton(options)
             options = options or {}
-            local container = row(options.Name or "Button", 28)
-            local button = rounded("TextButton", "Button", container, 0, 0, 0, 28, "Navigation", 6)
-            button.Size = UDim2.new(1, 0, 0, 28)
-            button.Text = options.Name or "Button"
-            bindTheme(button, "TextColor3", "Text")
-            setUIFont(button, true)
-            button.TextSize = 12
-            animateButton(button, "Navigation")
-            button.Activated:Connect(function()
-                if canInteract(container) and options.Callback then options.Callback() end
-            end)
-            return button
+            local items, names = { options }, { options.Name or "Button" }
+            for _, extra in ipairs(type(options.Buttons) == "table" and options.Buttons or {}) do
+                table.insert(items, extra)
+                table.insert(names, extra.Name or "Button")
+            end
+            local container = row(table.concat(names, " / "), 28)
+            local count, first = #items, nil
+            for index, item in ipairs(items) do
+                local button = rounded("TextButton", "Button", container, 0, 0, 0, 28, "Navigation", 6)
+                button.Size = UDim2.new(1 / count, -6 * (count - 1) / count, 0, 28)
+                button.Position = UDim2.new((index - 1) / count, (index - 1) * 6 / count, 0, 0)
+                button.Text = item.Name or "Button"
+                button.TextTruncate = Enum.TextTruncate.AtEnd
+                bindTheme(button, "TextColor3", "Text")
+                setUIFont(button, true)
+                button.TextSize = 12
+                animateButton(button, "Navigation")
+                button.Activated:Connect(function()
+                    if canInteract(container) and item.Callback then item.Callback() end
+                end)
+                first = first or button
+            end
+            return first
         end
         function group:AddSlider(options)
             options = options or {}
@@ -4729,6 +4772,42 @@ function Library:CreateWindow(config)
             Border = "6272A4",
             Text = "F8F8F2",
         },
+        -- Dark presets keep the card a step lighter than the background, like Default.
+        Orchid = { Accent = "C753E0", Background = "0E0D12", Card = "16141C", Border = "2A2633", Text = "E6E1EE" },
+        Catppuccin = { Accent = "CBA6F7", Background = "11111B", Card = "1E1E2E", Border = "313244", Text = "CDD6F4" },
+        ["Tokyo Night"] = {
+            Accent = "7AA2F7",
+            Background = "16161E",
+            Card = "1A1B26",
+            Border = "292E42",
+            Text = "C0CAF5",
+        },
+        Gruvbox = { Accent = "FE8019", Background = "1D2021", Card = "282828", Border = "3C3836", Text = "EBDBB2" },
+        ["One Dark"] = {
+            Accent = "61AFEF",
+            Background = "21252B",
+            Card = "282C34",
+            Border = "3E4451",
+            Text = "ABB2BF",
+        },
+        ["Rose Pine"] = {
+            Accent = "EBBCBA",
+            Background = "191724",
+            Card = "1F1D2E",
+            Border = "403D52",
+            Text = "E0DEF4",
+        },
+        Monokai = { Accent = "A6E22E", Background = "1E1F1C", Card = "272822", Border = "3E3D32", Text = "F8F8F2" },
+        Solarized = { Accent = "268BD2", Background = "002B36", Card = "073642", Border = "0E4B59", Text = "EEE8D5" },
+        Ocean = { Accent = "38BDF8", Background = "0B1220", Card = "111A2E", Border = "1E2A44", Text = "DCE6F5" },
+        Crimson = { Accent = "F43F5E", Background = "120C0E", Card = "1A1215", Border = "33232A", Text = "F0E4E7" },
+        -- Light presets: a white card on a tinted background, dark text, and a saturated accent.
+        Latte = { Accent = "8839EF", Background = "E6E9EF", Card = "F4F5F8", Border = "CCD0DA", Text = "4C4F69" },
+        Sakura = { Accent = "D6457A", Background = "FBF1F4", Card = "FFFFFF", Border = "EBD3DB", Text = "3A2730" },
+    }
+    ThemeManager.BuiltInOrder = {
+        "Default", "Orchid", "Black", "Mint", "Nord", "Dracula", "Catppuccin", "Tokyo Night", "Gruvbox",
+        "One Dark", "Rose Pine", "Monokai", "Solarized", "Ocean", "Crimson", "Light", "Latte", "Sakura",
     }
     function ThemeManager:Validate(data)
         if type(data) ~= "table" then return false, "Invalid theme" end
@@ -5021,7 +5100,7 @@ function Library:CreateWindow(config)
         card.Active = true
         -- Same see-through glass as the window: sheen, reflected rim, theme-aware opacity.
         local cardRim = Instance.new("UIStroke")
-        cardRim.Color = Color3.fromRGB(232, 225, 255)
+        cardRim.Color = glassRimColor
         cardRim.Transparency = 1
         glassSurface(card, 0.12, cardRim)
         icon(card, "search", 16, 16, 16, "Accent")
@@ -6002,6 +6081,7 @@ function Library:CreateWindow(config)
             Storage = Library._Storage,
             ExportTheme = function() return ThemeManager:Export() end,
             GetFont = function() return fontName end,
+            Fonts = fontOrder,
             SetLoading = function(value) loadingConfig = value end,
             CancelInteractions = function(silent)
                 cancelKeyCapture()
@@ -6155,7 +6235,20 @@ function Library:CreateWindow(config)
     function window:CreateSettingsTab(name)
         if settingsTab then return settingsTab end
         settingsTab = addTab({ Name = name or "Settings", Icon = "settings" })
-        local group = settingsTab:AddLeftGroupbox("Interface", "settings")
+        -- ThemeManager:ApplyToTab puts these controls in its Interface tab. Without it, they get a card of
+        -- their own once the caller's setup code has run.
+        task.defer(function()
+            if uiAlive and not self._InterfaceBuilt then
+                self:AddInterfaceControls(settingsTab:AddLeftGroupbox("Interface", "settings"))
+            end
+        end)
+        return settingsTab
+    end
+    function window:AddInterfaceControls(group)
+        if self._InterfaceBuilt then return end
+        self._InterfaceBuilt = true
+        self:AddStyleControls(group)
+        group:AddDivider()
         keybindListControl = group:AddCheckbox({
             Name = "Keybind Menu",
             Default = keybindMenu.Frame.Visible,
@@ -6187,7 +6280,6 @@ function Library:CreateWindow(config)
                 if value then task.defer(function() self:SetDPIScale(value) end) end
             end,
         })
-        return settingsTab
     end
     function window:AddStyleControls(section)
         if autoHideControl then return end

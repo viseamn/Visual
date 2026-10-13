@@ -57,7 +57,8 @@ local function newManager()
             full.Icon = full.Accent
             full.Hover = full.Card:Lerp(full.Accent, 0.16)
             full.Pressed = full.Card:Lerp(full.Accent, 0.3)
-            full.Font = "BuilderSans"
+            -- Presets are colors only; the chosen font stays.
+            full.Font = context.GetFont()
             full.BackgroundImage = ""
             local ok, err = self:ApplyThemeData(full)
             if ok then
@@ -126,14 +127,21 @@ local function newManager()
         bound().Theme:SyncPreset(name)
     end
     function ThemeManager:ApplyToTab(tab)
-        local group = tab:AddGroup({ Name = "Themes", Side = "Right", Icon = "palette" })
+        -- One card for everything visual: presets and font, colors, interface layout, and saved themes.
+        local group = tab:AddGroup({ Name = "Appearance", Side = "Right", Icon = "palette" })
+        local theme = group:AddTab("Theme")
         local colors = group:AddTab("Colors")
-        local style = group:AddTab("Style")
-        self.StyleSection = style
-        window:AddStyleControls(style)
-        local saved = group:AddTab("Presets")
+        local interface = group:AddTab("Interface")
+        local saved = group:AddTab("Saved")
+        self.StyleSection = interface
+        if window.AddInterfaceControls then
+            window:AddInterfaceControls(interface)
+        else
+            window:AddStyleControls(interface)
+        end
+        local builtIn = bound().Theme.BuiltInOrder or { "Default", "Light", "Black", "Mint", "Nord", "Dracula" }
         local function names()
-            local result = { "Default", "Light", "Black", "Mint", "Nord", "Dracula" }
+            local result = table.clone(builtIn)
             if not hasFiles() then return result end
             local customNames, err = self:ReloadCustomThemes()
             if err then report("Refresh themes", false, err) end
@@ -143,7 +151,7 @@ local function newManager()
             return result, err
         end
         local initialNames = names()
-        local selector = saved:AddDropdown({
+        local selector = theme:AddDropdown({
             Name = "Theme",
             Options = initialNames,
             Default = self.Current and table.find(initialNames, self.Current) and self.Current or initialNames[1],
@@ -161,6 +169,46 @@ local function newManager()
             end,
         })
         self.PresetSelector = selector
+        self.FontControl = theme:AddDropdown({
+            Name = "Font",
+            Options = table.clone(context.Fonts or { "BuilderSans", "Code", "Gotham", "SourceSans" }),
+            Default = context.GetFont(),
+            NoSave = true,
+            Callback = function(value)
+                if value then self:ApplyThemeData({ Font = value }) end
+            end,
+        })
+        self.ImageControl = theme:AddTextbox({
+            Name = "Background",
+            Default = context.Theme.BackgroundImage or "",
+            Placeholder = "Image asset ID",
+            NoSave = true,
+            Callback = function(value)
+                local ok, err = self:ApplyThemeData({ BackgroundImage = value:match("^%s*(.-)%s*$") })
+                if not ok then
+                    self.ImageControl.Text = context.Theme.BackgroundImage or ""
+                    report("Background image", ok, err)
+                end
+            end,
+        })
+        theme:AddButton({
+            Name = "Reset theme",
+            Callback = function()
+                showDialog({
+                    Title = "Reset theme",
+                    Content = "Restore the default UI colors and font?",
+                    OnConfirm = function()
+                        self:ApplyThemeData({ Font = "BuilderSans" })
+                        local ok, err = self:ApplyTheme("Default")
+                        if ok then
+                            selector:Set("Default", true)
+                        else
+                            report("Reset theme", ok, err)
+                        end
+                    end,
+                })
+            end,
+        })
         self.ColorControls = {}
         for _, role in ipairs({ "Accent", "Icon", "Background", "Card", "Text", "Border" }) do
             self.ColorControls[role] = colors:AddColorPicker({
@@ -178,112 +226,84 @@ local function newManager()
                 self:GetContrastRatio()
             )
         )
-        self.FontControl = style:AddDropdown({
-            Name = "Font Face",
-            Options = { "BuilderSans", "Code", "Gotham", "SourceSans" },
-            Default = context.GetFont(),
-            NoSave = true,
-            Callback = function(value) self:ApplyThemeData({ Font = value }) end,
-        })
-        self.ImageControl = style:AddTextbox({
-            Name = "Background Image",
-            Default = context.Theme.BackgroundImage or "",
-            Placeholder = "Roblox asset ID",
-            NoSave = true,
-            Callback = function(value)
-                local ok, err = self:ApplyThemeData({ BackgroundImage = value:match("^%s*(.-)%s*$") })
-                if not ok then
-                    self.ImageControl.Text = context.Theme.BackgroundImage or ""
-                    report("Background image", ok, err)
-                end
-            end,
-        })
-        style:AddButton({
-            Name = "Reset theme",
-            Callback = function()
-                showDialog({
-                    Title = "Reset theme",
-                    Content = "Restore the default UI colors?",
-                    OnConfirm = function()
-                        local ok, err = self:ApplyTheme("Default")
-                        if ok then
-                            selector:Set("Default", true)
-                        else
-                            report("Reset theme", ok, err)
-                        end
-                    end,
-                })
-            end,
-        })
-        saved:AddDivider()
         local nameBox = saved:AddTextbox({ Name = "Theme name", Default = "My theme", NoSave = true })
+        local function refreshList()
+            local values, err = names()
+            if not err then
+                selector:SetValues(values, true)
+                self:SyncPreset(self.Current)
+            end
+        end
         saved:AddButton({
-            Name = "Save theme",
+            Name = "Save",
             Callback = function()
                 local ok, err = self:SaveCustomTheme(nameBox.Text)
                 if ok then
-                    local values, listError = names()
-                    if not listError then selector:SetValues(values, true) end
+                    refreshList()
                     self:SyncPreset(nameBox.Text)
                 end
                 report("Save theme", ok, err)
             end,
+            Buttons = {
+                {
+                    Name = "Overwrite",
+                    Callback = function()
+                        local name = nameBox.Text
+                        if not safeName(name) or self.BuiltInThemes[name] then
+                            report("Overwrite theme", false, "Enter a saved custom theme name")
+                            return
+                        end
+                        showDialog({
+                            Title = "Overwrite theme",
+                            Content = 'Replace "' .. name .. '" with the current theme?',
+                            ConfirmText = "Overwrite",
+                            OnConfirm = function()
+                                local ok, err = self:SaveCustomTheme(name, true)
+                                if ok then self:SyncPreset(name) end
+                                report("Overwrite theme", ok, err)
+                            end,
+                        })
+                    end,
+                },
+            },
         })
         saved:AddButton({
-            Name = "Overwrite theme",
+            Name = "Set default",
             Callback = function()
-                local name = nameBox.Text
-                if not safeName(name) or self.BuiltInThemes[name] then
-                    report("Overwrite theme", false, "Enter a saved custom theme name")
+                if not selector.Value then
+                    report("Default theme", false, "Pick a theme in the Theme tab first")
                     return
                 end
-                showDialog({
-                    Title = "Overwrite theme",
-                    Content = 'Replace "' .. name .. '" with the current theme?',
-                    ConfirmText = "Overwrite",
-                    OnConfirm = function()
-                        local ok, err = self:SaveCustomTheme(name, true)
-                        if ok then self:SyncPreset(name) end
-                        report("Overwrite theme", ok, err)
-                    end,
-                })
+                report("Default theme", self:SaveDefault(selector.Value))
             end,
-        })
-        saved:AddButton({
-            Name = "Set default theme",
-            Callback = function() report("Default theme", self:SaveDefault(selector.Value)) end,
-        })
-        saved:AddButton({
-            Name = "Refresh themes",
-            Callback = function()
-                local values, err = names()
-                if not err then
-                    selector:SetValues(values, true)
-                    self:SyncPreset(self.Current)
-                end
-            end,
-        })
-        saved:AddButton({
-            Name = "Delete custom theme",
-            Callback = function()
-                local name = selector.Value
-                if not name then return end
-                showDialog({
-                    Title = "Delete theme",
-                    Content = 'Delete "' .. name .. '"?',
-                    ConfirmText = "Delete",
-                    OnConfirm = function()
-                        local ok, err = self:Delete(name)
-                        if ok then
-                            if self.Current == name then self:SyncPreset(nil) end
-                            local values, listError = names()
-                            if not listError then selector:SetValues(values, true) end
+            Buttons = {
+                { Name = "Refresh", Callback = refreshList },
+                {
+                    Name = "Delete",
+                    Callback = function()
+                        local name = selector.Value
+                        if not name or self.BuiltInThemes[name] then
+                            report("Delete theme", false, "Select a custom theme first")
+                            return
                         end
-                        report("Delete theme", ok, err)
+                        showDialog({
+                            Title = "Delete theme",
+                            Content = 'Delete "' .. name .. '"?',
+                            ConfirmText = "Delete",
+                            OnConfirm = function()
+                                local ok, err = self:Delete(name)
+                                if ok then
+                                    if self.Current == name then self:SyncPreset(nil) end
+                                    refreshList()
+                                end
+                                report("Delete theme", ok, err)
+                            end,
+                        })
                     end,
-                })
-            end,
+                },
+            },
         })
+        saved:AddLabel("Set default and Delete use the theme selected in the Theme tab.")
         local core = bound().Theme
         core.ColorControls, core.FontControl, core.ImageControl =
             self.ColorControls, self.FontControl, self.ImageControl
