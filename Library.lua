@@ -2002,9 +2002,9 @@ function Library:CreateWindow(config)
         glassSurface(frame, 0.08, border)
         local padding = Instance.new("UIPadding")
         padding.PaddingTop = UDim.new(0, 10)
-        padding.PaddingBottom = UDim.new(0, 10)
-        padding.PaddingLeft = UDim.new(0, 10)
-        padding.PaddingRight = UDim.new(0, 10)
+        padding.PaddingBottom = UDim.new(0, 12)
+        padding.PaddingLeft = UDim.new(0, 12)
+        padding.PaddingRight = UDim.new(0, 12)
         padding.Parent = frame
         local layout = Instance.new("UIListLayout")
         layout.SortOrder = Enum.SortOrder.LayoutOrder
@@ -2461,13 +2461,15 @@ function Library:CreateWindow(config)
         end
         function group:AddDivider(options)
             options = type(options) == "string" and { Text = options } or (options or {})
-            local container = row("Divider", options.Text and 24 or 10)
-            local line = rounded("Frame", "Line", container, 0, 4, 0, 1, "Border", 0)
+            -- The line sits mid-row, so with the 6px list padding it has the same 12px clearance above and below.
+            local container = row("Divider", options.Text and 30 or 13)
+            local line = rounded("Frame", "Line", container, 0, 6, 0, 1, "Border", 0)
             line.Size = UDim2.new(1, 0, 0, 1)
             if options.Text then
-                line.Position = UDim2.fromOffset(0, 23)
+                line.Position = UDim2.fromOffset(0, 24)
                 local title = label(container, options.Text, 11)
-                title.Size = UDim2.new(1, 0, 0, 19)
+                title.Position = UDim2.fromOffset(0, 4)
+                title.Size = UDim2.new(1, 0, 0, 16)
                 bindTheme(title, "TextColor3", "Muted")
             end
             return container
@@ -2520,6 +2522,10 @@ function Library:CreateWindow(config)
             if type(text) == "table" then text = text.Text end
             local container = row(text or "Label", 0)
             container.AutomaticSize = Enum.AutomaticSize.Y
+            -- A single line fills a 28px row like every other control; wrapped text grows from there.
+            local labelPadding = Instance.new("UIPadding")
+            labelPadding.PaddingTop, labelPadding.PaddingBottom = UDim.new(0, 6), UDim.new(0, 6)
+            labelPadding.Parent = container
             local object = label(container, text or "Label")
             object.Size = UDim2.new(1, 0, 0, 16)
             object.AutomaticSize = Enum.AutomaticSize.Y
@@ -3352,9 +3358,17 @@ function Library:CreateWindow(config)
             text.Size = options.MultiLine and UDim2.new(1, 0, 0, 20) or UDim2.new(0.48, -8, 1, 0)
             text.TextTruncate = Enum.TextTruncate.AtEnd
             local input = rounded("TextBox", "Input", container, 0, 24, 0, 26, "Search", 6)
-            input.Position = options.MultiLine and UDim2.fromOffset(0, 24) or UDim2.new(0.48, 0, 0, 1)
-            input.Size = options.MultiLine and UDim2.new(1, 0, 0, 80) or UDim2.new(0.52, 0, 0, 26)
+            -- Inset 1px from the row's edges, which clip, so the border below is drawn in full.
+            input.Position = options.MultiLine and UDim2.fromOffset(1, 25) or UDim2.new(0.48, 0, 0, 1)
+            input.Size = options.MultiLine and UDim2.new(1, -2, 0, 80) or UDim2.new(0.52, -1, 0, 26)
             input.TextXAlignment = Enum.TextXAlignment.Left
+            -- Same edge as the key chips, so the field reads as a box instead of loose placeholder text.
+            local inputBorder = Instance.new("UIStroke")
+            inputBorder.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+            bindTheme(inputBorder, "Color", "Border")
+            inputBorder.Parent = input
+            input.Focused:Connect(function() tween(inputBorder, { Color = "Accent" }, 0.15) end)
+            input.FocusLost:Connect(function() tween(inputBorder, { Color = "Border" }, 0.15) end)
             local inputPadding = Instance.new("UIPadding")
             inputPadding.PaddingLeft = UDim.new(0, 8)
             inputPadding.PaddingRight = UDim.new(0, 8)
