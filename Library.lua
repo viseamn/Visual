@@ -4415,10 +4415,10 @@ function Library:CreateWindow(config)
                 setGroupTransparency(tab.Page, active and 1 or 0)
                 tab.Page.Position = UDim2.fromOffset(0, active and 6 or 0)
             end
-            motion(tab.Button, { BackgroundTransparency = active and 0.12 or 1 }, 0.22)
-            motion(tab.Scale, { Scale = active and not strip and 1.04 or 1 }, 0.22)
-            motion(tab.Stroke, { Transparency = active and not strip and 0.18 or 1 }, 0.22)
-            tab.Glow.Target = active and not strip and 1 or 0
+            motion(tab.Button, { BackgroundTransparency = active and 0.45 or 1 }, 0.22)
+            motion(tab.Scale, { Scale = 1 }, 0.22)
+            motion(tab.Stroke, { Transparency = active and not strip and 0.86 or 1 }, 0.22)
+            tab.Glow.Target = active and not strip and 0.2 or 0
             tweenIcon(tab.Icon, strip and (active and "Text" or "Muted") or "Icon")
             tween(tab.Icon, { ImageTransparency = (active or strip) and 0 or 0.4 }, 0.16)
             tween(tab.Title, { TextColor3 = active and "Text" or "Muted" }, 0.16)
@@ -4432,7 +4432,7 @@ function Library:CreateWindow(config)
         config = config or {}
         local index = #tabs + 1
         local tab = { Name = config.Name or ("Tab " .. index), Groups = {}, Columns = {} }
-        local button = rounded("TextButton", tab.Name, navigationGroup, 0, 0, 40, 40, "Selected", 10)
+        local button = rounded("TextButton", tab.Name, navigationGroup, 0, 0, 40, 40, "Selected", 12)
         button.LayoutOrder = index
         button.BackgroundTransparency = 1
         tab.Button = button
@@ -4449,7 +4449,7 @@ function Library:CreateWindow(config)
         tab.Glow = attachGlow(dockGlowLayer, button, {
             Spread = 10,
             Radius = 10,
-            Strength = 0.7,
+            Strength = 0.25,
             Role = "Accent",
             Level = 0,
             Factor = dockGlowFactor,
@@ -4517,10 +4517,9 @@ function Library:CreateWindow(config)
         local function navigationFeedback(pressed)
             local selected = activeTab == tab
             local strip = dockEdge == "Top"
-            local lifted = (selected or hovering) and not strip
-            motion(tab.Scale, { Scale = pressed and (strip and 0.97 or 0.94) or (lifted and 1.04 or 1) }, 0.16)
-            motion(button, { BackgroundTransparency = selected and 0.12 or (hovering and 0.62 or 1) }, 0.16)
-            motion(stroke, { Transparency = strip and 1 or (selected and 0.18 or (hovering and 0.75 or 1)) }, 0.16)
+            motion(tab.Scale, { Scale = pressed and 0.96 or 1 }, 0.16)
+            motion(button, { BackgroundTransparency = selected and 0.45 or (hovering and 0.78 or 1) }, 0.16)
+            motion(stroke, { Transparency = strip and 1 or (selected and 0.86 or 1) }, 0.16)
             if strip then
                 tweenIcon(tab.Icon, (selected or hovering) and "Text" or "Muted")
                 tween(tab.Title, { TextColor3 = (selected or hovering) and "Text" or "Muted" }, 0.16)
@@ -5086,33 +5085,30 @@ function Library:CreateWindow(config)
         end
         refreshKeybindMenu()
     end
-    local profile = rounded("ImageLabel", "Profile", sidebar, 0, 0, 40, 40, Color3.fromRGB(114, 105, 133), 20)
+    local profile = rounded("ImageLabel", "Profile", sidebar, 0, 0, 32, 32, "Search", 16)
     profile.AnchorPoint = Vector2.new(1, 0.5)
-    profile.Position = UDim2.new(1, -12, 0.5, 0)
+    profile.Position = UDim2.new(1, -10, 0.5, 0)
     profile.ClipsDescendants = true
     local profileRim = Instance.new("UIStroke")
-    profileRim.Color = Color3.fromRGB(239, 228, 255)
-    profileRim.Transparency = 0.68
+    bindTheme(profileRim, "Color", "Text")
+    profileRim.Transparency = 0.88
     profileRim.Thickness = 1
     profileRim.Parent = profile
     task.spawn(function()
         local ok, thumbnail = playerThumbnail(Players, player.UserId)
         if ok and profile.Parent then profile.Image = thumbnail end
     end)
-    local dockSearch = rounded("TextButton", "DockSearch", sidebar, 12, 14, 148, 36, "Search", 18)
+    local dockSearch = rounded("TextButton", "DockSearch", sidebar, 8, 8, 40, 40, "Search", 12)
     local layoutDockSearch
     do
-        dockSearch.BackgroundTransparency = 0.2
-        dockSearch:FindFirstChildOfClass("UICorner").CornerRadius = UDim.new(0.5, 0)
+        dockSearch.BackgroundTransparency = 1
         local rim = Instance.new("UIStroke")
         rim.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
         bindTheme(rim, "Color", "Text")
-        rim.Transparency = 0.9
+        rim.Transparency = 1
         rim.Parent = dockSearch
-        local glyph = icon(dockSearch, "search", 12, 10, 16, "Muted")
+        local glyph = icon(dockSearch, "search", 12, 12, 16, "Muted")
         glyph.Name = "Glyph"
-        local divider = rounded("Frame", "Divider", dockSearch, 0, 0, 1, 32, "Text", 1)
-        divider.BackgroundTransparency = 0.9
         local card = rounded("CanvasGroup", "SearchCard", dockSearch, 0, 0, 236, 48, "Background", 16)
         setGroupTransparency(card, 1)
         card.Visible = false
@@ -5123,8 +5119,8 @@ function Library:CreateWindow(config)
         glassSurface(card, 0.12, cardRim)
         icon(card, "search", 16, 16, 16, "Accent")
         local expanded, cardRevision = false, 0
-        local box = rounded("TextBox", "Box", dockSearch, 36, 0, 0, 36, "Search", 0)
-        box.Size = UDim2.new(1, -46, 1, 0)
+        local box = rounded("TextBox", "Box", card, 0, 0, 0, 48, "Search", 0)
+        box.Size = UDim2.fromScale(1, 1)
         box.BackgroundTransparency = 1
         box.Text = ""
         box.PlaceholderText = "Search"
@@ -5141,42 +5137,44 @@ function Library:CreateWindow(config)
         local function refresh()
             local active = box:IsFocused()
             tween(dockSearch, { BackgroundColor3 = (hovering or active) and "Hover" or "Search" }, 0.16)
-            if dockEdge == "Top" then
-                motion(dockSearch, { BackgroundTransparency = (hovering or active) and 0.4 or 1 }, 0.16)
-            end
+            motion(dockSearch, { BackgroundTransparency = (hovering or active) and 0.65 or 1 }, 0.16)
             tween(rim, { Color = active and "Accent" or "Text" }, 0.16)
-            motion(rim, { Transparency = active and 0.35 or 0.9 }, 0.16)
+            motion(rim, { Transparency = active and 0.8 or 1 }, 0.16)
             tween(glyph, { ImageColor3 = (active or box.Text ~= "") and "Accent" or "Muted" }, 0.16)
         end
         layoutDockSearch = function(animate)
-            local vertical = dockEdge == "Left" or dockEdge == "Right"
-            divider.Visible = dockEdge ~= "Top"
             rim.Enabled = dockEdge ~= "Top"
-            dockSearch:FindFirstChildOfClass("UICorner").CornerRadius = UDim.new(0, dockEdge == "Top" and 12 or 999)
-            if vertical or dockEdge == "Top" then
+            do
                 local right = dockEdge == "Right"
                 local rest, away
                 if dockEdge == "Top" then
                     dockSearch.AnchorPoint = Vector2.new(1, 0.5)
                     dockSearch.Position = UDim2.new(1, -6, 0.5, 0)
                     dockSearch.Size = UDim2.fromOffset(36, 36)
-                    dockSearch.BackgroundTransparency = (hovering or box:IsFocused()) and 0.4 or 1
+                    dockSearch.BackgroundTransparency = (hovering or box:IsFocused()) and 0.65 or 1
                     glyph.Position = UDim2.fromOffset(10, 10)
                     local stripWidth = sidebar.Size.X.Offset
                     card.Size = UDim2.fromOffset(math.max(236, stripWidth), 48)
                     card.AnchorPoint = Vector2.new(0.5, 1)
                     local centre = 6 - stripWidth / 2
                     rest, away = UDim2.new(1, centre, 0, -24), UDim2.new(1, centre, 0, -16)
+                elseif dockEdge == "Bottom" then
+                    dockSearch.AnchorPoint = Vector2.new(0, 0.5)
+                    dockSearch.Position = UDim2.new(0, 8, 0.5, 0)
+                    dockSearch.Size = UDim2.fromOffset(40, 40)
+                    dockSearch.BackgroundTransparency = (hovering or box:IsFocused()) and 0.65 or 1
+                    glyph.Position = UDim2.fromOffset(12, 12)
+                    card.Size = UDim2.fromOffset(236, 48)
+                    card.AnchorPoint = Vector2.new(0.5, 1)
+                    local centre = sidebar.Parent.Size.X.Offset / 2 - 8
+                    rest, away = UDim2.fromOffset(centre, -16), UDim2.fromOffset(centre, -8)
                 else
                     dockSearch.AnchorPoint = Vector2.new(0.5, 0)
-                    dockSearch.Position = UDim2.new(0.5, 0, 0, 10)
-                    dockSearch.Size = UDim2.fromOffset(44, 44)
-                    dockSearch.BackgroundTransparency = 0.2
-                    glyph.Position = UDim2.fromOffset(14, 14)
+                    dockSearch.Position = UDim2.new(0.5, 0, 0, 8)
+                    dockSearch.Size = UDim2.fromOffset(40, 40)
+                    dockSearch.BackgroundTransparency = (hovering or box:IsFocused()) and 0.65 or 1
+                    glyph.Position = UDim2.fromOffset(12, 12)
                     card.Size = UDim2.fromOffset(236, 48)
-                    divider.AnchorPoint = Vector2.new(0.5, 0)
-                    divider.Position = UDim2.new(0.5, 0, 1, 10)
-                    divider.Size = UDim2.fromOffset(32, 1)
                     card.AnchorPoint = Vector2.new(right and 1 or 0, 0.5)
                     rest = UDim2.new(right and 0 or 1, right and -20 or 20, 0.5, 0)
                     away = UDim2.new(right and 0 or 1, right and -12 or 12, 0.5, 0)
@@ -5199,22 +5197,6 @@ function Library:CreateWindow(config)
                         if cardRevision == revision and not expanded then card.Visible = false end
                     end)
                 end
-            else
-                dockSearch.AnchorPoint = Vector2.new(0, 0.5)
-                dockSearch.Position = UDim2.new(0, 12, 0.5, 0)
-                dockSearch.Size = UDim2.fromOffset(148, 36)
-                dockSearch.BackgroundTransparency = 0.2
-                glyph.Position = UDim2.fromOffset(12, 10)
-                divider.AnchorPoint = Vector2.new(0, 0.5)
-                divider.Position = UDim2.new(1, 10, 0.5, 0)
-                divider.Size = UDim2.fromOffset(1, 32)
-                box.Parent = dockSearch
-                box.Position = UDim2.fromOffset(36, 0)
-                box.Size = UDim2.new(1, -46, 1, 0)
-                boxPadding.PaddingLeft, boxPadding.PaddingRight = UDim.new(0, 0), UDim.new(0, 0)
-                cardRevision = cardRevision + 1
-                card.Visible = false
-                setGroupTransparency(card, 1)
             end
         end
         dockSearch.MouseEnter:Connect(function()
@@ -5243,10 +5225,6 @@ function Library:CreateWindow(config)
         end)
         dockSearch.Activated:Connect(function()
             if dialogOpen then return end
-            if box.Parent == dockSearch then
-                box:CaptureFocus()
-                return
-            end
             if expanded then
                 expanded = false
                 box:ReleaseFocus()
@@ -5273,14 +5251,14 @@ function Library:CreateWindow(config)
     dockHost.Name = "BottomBar"
     dockHost.AnchorPoint = Vector2.new(0.5, 1)
     dockHost.Position = UDim2.new(0.5, 0, 1, 76)
-    dockHost.Size = UDim2.fromOffset(180, 64)
+    dockHost.Size = UDim2.fromOffset(180, 56)
     dockHost.BackgroundTransparency = 1
     dockHost.Visible = false
     dockHost.ZIndex = 20
     dockHost.Parent = viewport
     local dockScale = Instance.new("UIScale")
     dockScale.Parent = dockHost
-    local dockGlass = rounded("Frame", "DockGlass", dockHost, 0, 0, 0, 0, "Background", 22)
+    local dockGlass = rounded("Frame", "DockGlass", dockHost, 0, 0, 0, 0, "Background", 16)
     dockGlowLayer = Instance.new("Frame")
     dockGlowLayer.Name = "GlowLayer"
     dockGlowLayer.BackgroundTransparency = 1
@@ -5294,9 +5272,9 @@ function Library:CreateWindow(config)
     dockRim.Transparency = 0.92
     dockRim.Thickness = 1
     dockRim.Parent = dockGlass
-    local dockDivider = rounded("Frame", "ProfileDivider", dockGlass, 0, 16, 1, 32, "Text", 1)
-    dockDivider.Position = UDim2.new(1, -62, 0, 16)
-    dockDivider.BackgroundTransparency = 0.9
+    local dockDivider = rounded("Frame", "ProfileDivider", dockGlass, 0, 16, 1, 24, "Text", 1)
+    dockDivider.Position = UDim2.new(1, -50, 0, 16)
+    dockDivider.BackgroundTransparency = 0.92
     local dockReveal = rounded("TextButton", "RevealBottomBar", viewport, 0, 0, 104, 20, "Background", 6)
     dockReveal.BackgroundTransparency = 1
     dockReveal.AnchorPoint = Vector2.new(0.5, 1)
@@ -5343,7 +5321,7 @@ function Library:CreateWindow(config)
     end
     local function renderDock()
         local progress = math.clamp(dockProgress, 0, 1)
-        local hiddenDepth = 12 + (dockEdge == "Top" and 48 or 64) * dockFitScale + dockScreenGap()
+        local hiddenDepth = 12 + (dockEdge == "Top" and 48 or 56) * dockFitScale + dockScreenGap()
         placeAtEdge(dockHost, (dockRestInward() + hiddenDepth) * dockProgress - hiddenDepth)
         dockHost.Visible = dockEdge ~= "Top" and (dockProgress > 0.002 or dockExpanded)
         dockScale.Scale = dockFitScale * (0.94 + 0.06 * dockProgress)
@@ -5374,19 +5352,18 @@ function Library:CreateWindow(config)
                 tab.Icon.Position = UDim2.fromOffset(9, 9)
                 tab.Icon.Size = UDim2.fromOffset(18, 18)
             else
-                tab.Button.Size = UDim2.fromOffset(44, 44)
-                tab.Icon.Position = UDim2.fromOffset(11, 11)
-                tab.Icon.Size = UDim2.fromOffset(22, 22)
+                tab.Button.Size = UDim2.fromOffset(40, 40)
+                tab.Icon.Position = UDim2.fromOffset(10, 10)
+                tab.Icon.Size = UDim2.fromOffset(20, 20)
             end
-            tab.Button:FindFirstChildOfClass("UICorner").CornerRadius = UDim.new(0, strip and 12 or 10)
-            tabSpan = tabSpan + tab.Button.Size.X.Offset + (strip and 6 or 8)
+            tabSpan = tabSpan + tab.Button.Size.X.Offset + 6
         end
         local vertical = dockVertical()
-        local thickness = strip and 48 or 64
-        local searchSpan = searchStyle ~= "Bar" and 0 or (vertical or strip) and (strip and 42 or 58) or 164
+        local thickness = strip and 48 or 56
+        local searchSpan = searchStyle ~= "Bar" and 0 or (strip and 42 or 46)
         local available = vertical and viewport.AbsoluteSize.Y or viewport.AbsoluteSize.X
         local length = strip and (6 + tabSpan + searchSpan)
-            or math.min(76 + searchSpan + #tabs * 52, math.max(128 + searchSpan, available - 24))
+            or math.min(62 + searchSpan + #tabs * 46, math.max(108 + searchSpan, available - 24))
         local headerSearch = strip and searchStyle == "Header"
         if strip then
             local room = root.Size.X.Offset - (headerSearch and 60 + 242 or 120)
@@ -5403,7 +5380,6 @@ function Library:CreateWindow(config)
         header.ZIndex = strip and 3 or 1
         searchField.Position = strip and UDim2.new(1, -234, 0, 13) or UDim2.fromOffset(66, 13)
         dockHost.Size = vertical and UDim2.fromOffset(thickness, length) or UDim2.fromOffset(length, thickness)
-        dockGlass:FindFirstChildOfClass("UICorner").CornerRadius = UDim.new(0, strip and 16 or 22)
         profile.Visible = not strip
         dockDivider.Visible = not strip
         dockFitScale = math.min(root:GetAttribute("DPIScale") or 1, math.max(0.1, (available - 24) / length))
@@ -5420,23 +5396,23 @@ function Library:CreateWindow(config)
             navigationGroup.Size = UDim2.new(1, -12 - searchSpan, 0, 36)
         elseif vertical then
             navigationGroup.Position = UDim2.fromOffset(6, 8 + searchSpan)
-            navigationGroup.Size = UDim2.new(0, 52, 1, -72 - searchSpan)
+            navigationGroup.Size = UDim2.new(0, 44, 1, -64 - searchSpan)
             profile.AnchorPoint = Vector2.new(0.5, 1)
-            profile.Position = UDim2.new(0.5, 0, 1, -12)
-            dockDivider.Size = UDim2.fromOffset(32, 1)
-            dockDivider.Position = UDim2.new(0, 16, 1, -62)
+            profile.Position = UDim2.new(0.5, 0, 1, -10)
+            dockDivider.Size = UDim2.fromOffset(24, 1)
+            dockDivider.Position = UDim2.new(0, 16, 1, -50)
         else
             navigationGroup.Position = UDim2.fromOffset(8 + searchSpan, 6)
-            navigationGroup.Size = UDim2.new(1, -72 - searchSpan, 0, 52)
+            navigationGroup.Size = UDim2.new(1, -64 - searchSpan, 0, 44)
             profile.AnchorPoint = Vector2.new(1, 0.5)
-            profile.Position = UDim2.new(1, -12, 0.5, 0)
-            dockDivider.Size = UDim2.fromOffset(1, 32)
-            dockDivider.Position = UDim2.new(1, -62, 0, 16)
+            profile.Position = UDim2.new(1, -10, 0.5, 0)
+            dockDivider.Size = UDim2.fromOffset(1, 24)
+            dockDivider.Position = UDim2.new(1, -50, 0, 16)
         end
-        local inset = UDim.new(0, strip and 0 or 4)
+        local inset = UDim.new(0, strip and 0 or 2)
         navigationPadding.PaddingTop, navigationPadding.PaddingBottom = inset, inset
         navigationPadding.PaddingLeft, navigationPadding.PaddingRight = inset, inset
-        navigationLayout.Padding = UDim.new(0, strip and 6 or 8)
+        navigationLayout.Padding = UDim.new(0, 6)
         if activeTab then selectTab(activeTab, true) end
     end
     root:GetPropertyChangedSignal("Size"):Connect(function()
@@ -5457,7 +5433,7 @@ function Library:CreateWindow(config)
         sidebar.Position = UDim2.fromOffset(0, 0)
         sidebar.Active = false
         local vertical = dockVertical()
-        navigationLayout.Padding = UDim.new(0, 8)
+        navigationLayout.Padding = UDim.new(0, 6)
         navigationLayout.FillDirection = vertical and Enum.FillDirection.Vertical or Enum.FillDirection.Horizontal
         navigationLayout.HorizontalAlignment = vertical and Enum.HorizontalAlignment.Center
             or Enum.HorizontalAlignment.Left
@@ -5483,7 +5459,7 @@ function Library:CreateWindow(config)
         local progress, velocity, target = 1, 0, 1
         local minimumScale, hostPadding = 0.14, 12
         local function landingPoint()
-            local inward = dockRestInward() + (dockEdge == "Top" and 24 or 32) * dockFitScale
+            local inward = dockRestInward() + (dockEdge == "Top" and 24 or 28) * dockFitScale
             local size = viewport.AbsoluteSize
             if dockEdge == "Top" then return Vector2.new(size.X / 2, inward) end
             if dockEdge == "Left" then return Vector2.new(inward, size.Y / 2) end
@@ -5589,7 +5565,7 @@ function Library:CreateWindow(config)
         local half = dockExpanded and (length / 2 + 12) or 56
         local near = math.abs(along) <= half
             and depth >= -(2 + dockScreenGap())
-            and depth <= (dockExpanded and 32 + (dockEdge == "Top" and 48 or 64) * dockFitScale or 18)
+            and depth <= (dockExpanded and 32 + (dockEdge == "Top" and 48 or 56) * dockFitScale or 18)
         if near then dockHoverUntil = now + 0.65 end
         local expanded = near or now < dockHoverUntil
         if expanded ~= dockExpanded then showDock(expanded) end
