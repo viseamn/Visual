@@ -266,16 +266,9 @@ local fontChoices = {
     Code = "rbxasset://fonts/families/Inconsolata.json",
     RobotoMono = "rbxasset://fonts/families/RobotoMono.json",
 }
-local darkSheen = ColorSequence.new(Color3.new(1, 1, 1), Color3.fromRGB(225, 231, 242))
-local lightSheen = ColorSequence.new(Color3.new(1, 1, 1), Color3.fromRGB(239, 243, 250))
-local glassRimColor = Color3.fromRGB(240, 245, 255)
-local glassReflection = NumberSequence.new({
-    NumberSequenceKeypoint.new(0, 0.08),
-    NumberSequenceKeypoint.new(0.18, 0.6),
-    NumberSequenceKeypoint.new(0.5, 1),
-    NumberSequenceKeypoint.new(0.8, 0.96),
-    NumberSequenceKeypoint.new(1, 0.5),
-})
+local darkSheen = ColorSequence.new(Color3.new(1, 1, 1), Color3.fromRGB(220, 213, 239))
+local lightSheen = ColorSequence.new(Color3.new(1, 1, 1), Color3.fromRGB(244, 243, 248))
+local glassRimColor = Color3.fromRGB(232, 225, 255)
 local haloAlpha = { 0.02, 0.03, 0.04, 0.05, 0.06, 0.07 }
 
 local Players = game:GetService("Players")
@@ -503,15 +496,12 @@ function Library:CreateWindow(config)
         for object, info in pairs(glassSurfaces) do
             if object.Parent then
                 info.Sheen.Color = light and lightSheen or darkSheen
-                if info.Reflection then
-                    info.Reflection.BackgroundTransparency = 1 - info.Gloss * (light and 0.45 or 1)
-                end
                 if info.Transparency < 1 then
                     object.BackgroundTransparency = info.Transparency * glassOpacityFactor
                 end
                 if info.Rim then
                     info.Rim.Color = light and Theme.Border or glassRimColor
-                    if info.OwnRim then info.Rim.Transparency = light and 0.55 or 0.6 end
+                    if info.OwnRim then info.Rim.Transparency = light and 0.15 or 0.78 end
                 end
             end
         end
@@ -600,31 +590,14 @@ function Library:CreateWindow(config)
             end
         end
     end
-    local function glassSurface(object, transparency, existingStroke, gloss)
+    local function glassSurface(object, transparency, existingStroke)
         object.BackgroundTransparency = transparency * (transparency < 1 and glassOpacityFactor or 1)
         local sheen = Instance.new("UIGradient")
         sheen.Name = "GlassSheen"
-        sheen.Rotation = 90
+        sheen.Rotation = 110
         sheen.Color = glassOpacityFactor < 1 and lightSheen or darkSheen
         sheen.Parent = object
-        local reflection
-        if gloss and gloss > 0 then
-            reflection = Instance.new("Frame")
-            reflection.Name = "GlassReflection"
-            reflection.Size = UDim2.fromScale(1, 1)
-            reflection.BackgroundColor3 = Color3.new(1, 1, 1)
-            reflection.BackgroundTransparency = 1 - gloss * (glassOpacityFactor < 1 and 0.45 or 1)
-            reflection.BorderSizePixel = 0
-            reflection:SetAttribute("PassInput", true)
-            local corner = object:FindFirstChildOfClass("UICorner")
-            if corner then corner:Clone().Parent = reflection end
-            local glint = Instance.new("UIGradient")
-            glint.Rotation = 90
-            glint.Transparency = glassReflection
-            glint.Parent = reflection
-            reflection.Parent = object
-        end
-        local info = { Transparency = transparency, Sheen = sheen, Reflection = reflection, Gloss = gloss or 0 }
+        local info = { Transparency = transparency, Sheen = sheen }
         glassSurfaces[object] = info
         local rim = existingStroke or Instance.new("UIStroke")
         if not existingStroke or rim.Color == glassRimColor then
@@ -635,17 +608,17 @@ function Library:CreateWindow(config)
         rim.Thickness = 1
         if not existingStroke then
             rim.Color = glassOpacityFactor < 1 and Theme.Border or glassRimColor
-            rim.Transparency = glassOpacityFactor < 1 and 0.55 or 0.6
+            rim.Transparency = glassOpacityFactor < 1 and 0.15 or 0.78
         end
-        local edgeReflection = Instance.new("UIGradient")
-        edgeReflection.Rotation = 65
-        edgeReflection.Transparency = NumberSequence.new({
-            NumberSequenceKeypoint.new(0, 0),
-            NumberSequenceKeypoint.new(0.3, 0.5),
-            NumberSequenceKeypoint.new(0.65, 0.85),
-            NumberSequenceKeypoint.new(1, 0.12),
+        local reflection = Instance.new("UIGradient")
+        reflection.Rotation = 65
+        reflection.Transparency = NumberSequence.new({
+            NumberSequenceKeypoint.new(0, 0.05),
+            NumberSequenceKeypoint.new(0.3, 0.65),
+            NumberSequenceKeypoint.new(0.65, 0.9),
+            NumberSequenceKeypoint.new(1, 0.3),
         })
-        edgeReflection.Parent = rim
+        reflection.Parent = rim
         rim.Parent = object
         return rim
     end
@@ -669,7 +642,7 @@ function Library:CreateWindow(config)
     rootCorner.Parent = root
     root.BorderSizePixel = 0
     root.Parent = viewport
-    glassSurface(root, 0.2, nil, 0.08)
+    glassSurface(root, 0.12)
 
     local layoutStyle = "Bottom bar"
     local searchStyle = "Bar"
@@ -2071,7 +2044,7 @@ function Library:CreateWindow(config)
         bindTheme(border, "Color", "Border")
         border.Parent = frame
         border.Transparency = 0.35
-        glassSurface(frame, 0.14, border)
+        glassSurface(frame, 0.08, border)
         local padding = Instance.new("UIPadding")
         padding.PaddingTop = UDim.new(0, 10)
         padding.PaddingBottom = UDim.new(0, 12)
@@ -2701,13 +2674,11 @@ function Library:CreateWindow(config)
             keyBoxBorder.Parent = keyBox
             animateButton(keyBox, "Search")
             local bindPopup, bindTuck = { Options = bindMenu, Trigger = keyButton, Revision = 0 }, -6
-            local button = rounded("TextButton", "Switch", container, 0, 3, 38, 22, "Navigation", 11)
-            button.Position = UDim2.new(1, -38, 0, 3)
-            glassSurface(button, 0.08, nil, 0.2)
-            local switchGlow = elementGlow(button, { Spread = 9, Radius = 11, Strength = 0.65, Role = "Accent", Level = 0 })
-            local dot = rounded("Frame", "Dot", button, 11, 11, 18, 18, "Text", 9)
+            local button = rounded("TextButton", "Switch", container, 0, 4, 34, 20, "Navigation", 10)
+            button.Position = UDim2.new(1, -34, 0, 4)
+            local switchGlow = elementGlow(button, { Spread = 8, Radius = 10, Strength = 0.7, Role = "Accent", Level = 0 })
+            local dot = rounded("Frame", "Dot", button, 10, 10, 14, 14, "Muted", 7)
             dot.AnchorPoint = Vector2.new(0.5, 0.5)
-            glassSurface(dot, 0, nil, 0.22)
             local toggleRevision = 0
             local control = {
                 Value = false,
@@ -2799,7 +2770,7 @@ function Library:CreateWindow(config)
                 local iconOnly = not listening and self.Keybind == Enum.KeyCode.Unknown
                 local keyName = self.Keybind == Enum.KeyCode.Unknown and "-" or self.Keybind.Name
                 keyButton.Text = iconOnly and "" or (listening and "..." or shortKeyNames[keyName] or keyName)
-                local edge, gap = 38 + self.ColorSpace, 8
+                local edge, gap = 34 + self.ColorSpace, 8
                 keyButton.Visible = self.HasKeyPicker
                 if self.HasKeyPicker then
                     local textWidth = TextService
@@ -2833,7 +2804,7 @@ function Library:CreateWindow(config)
                     assert(not controlRegistry[id], "Duplicate SaveId: " .. id)
                 end
                 local swatch = rounded("TextButton", "ColorSwatch", container, 0, 5, 18, 18, "Accent", 4)
-                swatch.Position = UDim2.new(1, -64, 0, 5)
+                swatch.Position = UDim2.new(1, -60, 0, 5)
                 local stroke = Instance.new("UIStroke")
                 stroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
                 bindTheme(stroke, "Color", "Muted")
@@ -2948,14 +2919,14 @@ function Library:CreateWindow(config)
                 switchGlow.Target = self.Value and 1 or 0
                 if silent then switchGlow.Level = switchGlow.Target end
                 motion(dot, {
-                    Position = UDim2.fromOffset(self.Value and 27 or 11, 11),
-                    BackgroundColor3 = self.Value and "OnAccent" or "Text",
+                    Position = UDim2.fromOffset(self.Value and 24 or 10, 10),
+                    BackgroundColor3 = self.Value and "OnAccent" or "Muted",
                 }, 0.18, silent)
-                motion(dot, { Size = UDim2.fromOffset(silent and 18 or 20, silent and 18 or 16) }, 0.07, silent)
+                motion(dot, { Size = UDim2.fromOffset(silent and 14 or 17, silent and 14 or 12) }, 0.07, silent)
                 if not silent then
                     task.delay(0.07, function()
                         if dot.Parent and toggleRevision == revision then
-                            motion(dot, { Size = UDim2.fromOffset(18, 18) }, 0.16)
+                            motion(dot, { Size = UDim2.fromOffset(14, 14) }, 0.16)
                         end
                     end)
                 end
@@ -3015,7 +2986,7 @@ function Library:CreateWindow(config)
                 finishColorDrag()
                 completedDragInput = nil
                 local startX = input.Position.X
-                local factor = math.max(0.01, button.AbsoluteSize.X / 38)
+                local factor = math.max(0.01, button.AbsoluteSize.X / 34)
                 local initial = control.Value and 1 or 0
                 local gesture = { Input = input, Control = control, Dragged = false, Position = initial }
                 local function restore()
@@ -3028,12 +2999,12 @@ function Library:CreateWindow(config)
                     local delta = position.X - startX
                     if not gesture.Dragged and math.abs(delta) < 3 * factor then return end
                     gesture.Dragged = true
-                    gesture.Position = math.clamp(initial + delta / (16 * factor), 0, 1)
+                    gesture.Position = math.clamp(initial + delta / (14 * factor), 0, 1)
                     local enabled = gesture.Position >= 0.5
                     motion(dot, {
-                        Position = UDim2.fromOffset(11 + 16 * gesture.Position, 11),
-                        Size = UDim2.fromOffset(18, 18),
-                        BackgroundColor3 = enabled and "OnAccent" or "Text",
+                        Position = UDim2.fromOffset(10 + 14 * gesture.Position, 10),
+                        Size = UDim2.fromOffset(14, 14),
+                        BackgroundColor3 = enabled and "OnAccent" or "Muted",
                     }, 0.045)
                     motion(button, { BackgroundColor3 = enabled and "Accent" or "Navigation" }, 0.08)
                     switchGlow.Target = enabled and 1 or 0
@@ -3186,15 +3157,16 @@ function Library:CreateWindow(config)
             hit.BackgroundTransparency = 1
             local trackFrame = rounded("Frame", "Track", hit, 0, 10, 0, 8, "Navigation", 4)
             trackFrame.Size = UDim2.new(1, 0, 0, 8)
-            glassSurface(trackFrame, 0.12, nil, 0.12)
             local fill = rounded("Frame", "Fill", trackFrame, 0, 0, 0, 8, "Accent", 4)
-            glassSurface(fill, 0.04, nil, 0.18)
-            local fillGlow = elementGlow(fill, { Spread = 8, Radius = 4, Strength = 0.65, Role = "Accent" })
+            local fillGlow = elementGlow(fill, { Spread = 7, Radius = 4, Strength = 0.55, Role = "Accent" })
+            local highlight = Instance.new("UIGradient")
+            highlight.Transparency =
+                NumberSequence.new({ NumberSequenceKeypoint.new(0, 0.28), NumberSequenceKeypoint.new(1, 0) })
+            highlight.Parent = fill
             local function thumb(name)
-                local knob = rounded("Frame", name, trackFrame, 0, 4, 22, 16, "Text", 8)
+                local knob = rounded("Frame", name, trackFrame, 0, 4, 16, 12, "Text", 6)
                 knob.AnchorPoint = Vector2.new(0.5, 0.5)
                 knob.ZIndex = 2
-                glassSurface(knob, 0, nil, 0.25)
                 local knobScale = Instance.new("UIScale")
                 knobScale.Parent = knob
                 return knob
@@ -4471,7 +4443,7 @@ function Library:CreateWindow(config)
         stroke.Transparency = 1
         stroke.Parent = button
         tab.Stroke = stroke
-        glassSurface(button, 1, stroke, 0.06)
+        glassSurface(button, 1, stroke)
         tab.Scale = Instance.new("UIScale")
         tab.Scale.Parent = button
         tab.Glow = attachGlow(dockGlowLayer, button, {
@@ -5294,13 +5266,12 @@ function Library:CreateWindow(config)
     dockGlowLayer.Parent = dockGlass
     dockGlowFactor = function() return dockScale.Scale end
     dockGlass.Size = UDim2.fromScale(1, 1)
-    dockGlass.BackgroundTransparency = 0.28
+    dockGlass.BackgroundTransparency = 0.08
     local dockRim = Instance.new("UIStroke")
     bindTheme(dockRim, "Color", "Text")
     dockRim.Transparency = 0.92
     dockRim.Thickness = 1
     dockRim.Parent = dockGlass
-    glassSurface(dockGlass, 0.28, dockRim, 0.16)
     local dockDivider = rounded("Frame", "ProfileDivider", dockGlass, 0, 16, 1, 24, "Text", 1)
     dockDivider.Position = UDim2.new(1, -50, 0, 16)
     dockDivider.BackgroundTransparency = 0.92
@@ -5354,8 +5325,8 @@ function Library:CreateWindow(config)
         placeAtEdge(dockHost, (dockRestInward() + hiddenDepth) * dockProgress - hiddenDepth)
         dockHost.Visible = dockEdge ~= "Top" and (dockProgress > 0.002 or dockExpanded)
         dockScale.Scale = dockFitScale * (0.94 + 0.06 * dockProgress)
-        dockGlass.BackgroundTransparency = (0.28 + (1 - progress) * 0.22) * glassOpacityFactor
-        dockRim.Transparency = 0.62 + (1 - progress) * 0.38
+        dockGlass.BackgroundTransparency = (0.08 + (1 - progress) * 0.22) * glassOpacityFactor
+        dockRim.Transparency = 0.92 + (1 - progress) * 0.08
         local reveal = dockAutoHide and dockEdge ~= "Top" and (1 - progress) or 0
         dockReveal.Visible = reveal > 0.005
         dockReveal.Interactable = not dockExpanded and reveal > 0.2
