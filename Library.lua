@@ -274,7 +274,27 @@ local haloAlpha = { 0.02, 0.03, 0.04, 0.05, 0.06, 0.07 }
 local Players = game:GetService("Players")
 local UserInputService = game:GetService("UserInputService")
 local TweenService = game:GetService("TweenService")
-local HttpService = game:GetService("HttpService")
+local RunService = game:GetService("RunService")
+local GuiService = game:GetService("GuiService")
+local TextService = game:GetService("TextService")
+local fontCache, tweenInfoCache = {}, {}
+local function uiFont(name, medium)
+    local fonts = fontCache[name]
+    if not fonts then
+        local family = fontChoices[name] or fontChoices.BuilderSans
+        fonts = { Font.new(family, Enum.FontWeight.Regular), Font.new(family, Enum.FontWeight.Medium) }
+        fontCache[name] = fonts
+    end
+    return fonts[medium and 2 or 1]
+end
+local function tweenInfo(duration)
+    local info = tweenInfoCache[duration]
+    if not info then
+        info = TweenInfo.new(duration, Enum.EasingStyle.Quint)
+        tweenInfoCache[duration] = info
+    end
+    return info
+end
 local shortKeyNames = {
     LeftControl = "Ctrl",
     RightControl = "Ctrl",
@@ -390,10 +410,7 @@ function Library:CreateWindow(config)
     local function setUIFont(object, medium)
         if fontBindings[object] == nil then object.Destroying:Connect(function() fontBindings[object] = nil end) end
         fontBindings[object] = medium == true
-        object.FontFace = Font.new(
-            fontChoices[fontName] or fontChoices.BuilderSans,
-            medium and Enum.FontWeight.Medium or Enum.FontWeight.Regular
-        )
+        object.FontFace = uiFont(fontName, medium)
     end
     local controlRegistry = {}
     local Options, Toggles = {}, {}
@@ -413,7 +430,6 @@ function Library:CreateWindow(config)
     screen.DisplayOrder = 2147483647
     screen.Parent = playerGui
 
-    local function animationDuration(seconds) return seconds end
     local function rounded(className, name, parent, x, y, width, height, color, radius)
         local object = newUI(className)
         object.Name = name
@@ -522,6 +538,13 @@ function Library:CreateWindow(config)
                 record.Level = record.Level + (record.Target - record.Level) * blend
                 if math.abs(record.Target - record.Level) < 0.002 then record.Level = record.Target end
                 local strength = record.Level * record.Strength
+                if strength <= 0.002 then
+                    if record.Shown ~= false then
+                        record.Shown = false
+                        halo.Visible = false
+                    end
+                    continue
+                end
                 local object = element
                 while strength > 0.002 and object and object ~= record.Boundary do
                     if object:IsA("GuiObject") then
@@ -649,7 +672,7 @@ function Library:CreateWindow(config)
         local camera = workspace.CurrentCamera
         local total = camera and (camera.ViewportSize - area) or Vector2.zero
         total = Vector2.new(math.max(0, total.X), math.max(0, total.Y))
-        local inset = game:GetService("GuiService"):GetGuiInset()
+        local inset = GuiService:GetGuiInset()
         local top = math.clamp(inset.Y, 0, total.Y)
         local left = math.clamp(inset.X, 0, total.X)
         return Vector2.new(-left, -top), area + Vector2.new(total.X - left, total.Y - top)
@@ -791,7 +814,7 @@ function Library:CreateWindow(config)
         table.insert(connections, connection)
         return connection
     end
-    track(game:GetService("RunService").RenderStepped:Connect(stepGlows))
+    track(RunService.RenderStepped:Connect(stepGlows))
     local dockGlowLayer, dockGlowFactor
     local dragStarts = setmetatable({}, { __mode = "k" })
     local function approachPixel(current, target, alpha)
@@ -881,7 +904,7 @@ function Library:CreateWindow(config)
         end
         local animation = TweenService:Create(
             object,
-            TweenInfo.new(animationDuration(duration or 0.2), Enum.EasingStyle.Quint),
+            tweenInfo(duration or 0.2),
             properties
         )
         if changesColor then themeTweens[animation] = true end
@@ -930,7 +953,7 @@ function Library:CreateWindow(config)
             hovering = true
             local popup = openDropdown and openDropdown.Options
             if popup and popup.Visible and not button:IsDescendantOf(popup) then
-                local mouse = UserInputService:GetMouseLocation() - game:GetService("GuiService"):GetGuiInset()
+                local mouse = UserInputService:GetMouseLocation() - GuiService:GetGuiInset()
                 local origin, size = popup.AbsolutePosition, popup.AbsoluteSize
                 if mouse.X >= origin.X and mouse.X <= origin.X + size.X
                     and mouse.Y >= origin.Y and mouse.Y <= origin.Y + size.Y then
@@ -1165,10 +1188,10 @@ function Library:CreateWindow(config)
             end
             tween(holder, { Position = hiddenPosition(), GroupTransparency = 1 }, 0.28)
             motion(cardScale, { Scale = 0.96 }, 0.28)
-            task.delay(animationDuration(0.1), function()
+            task.delay(0.1, function()
                 if uiAlive and slot.Parent then tween(reveal, { Value = 0 }, 0.3) end
             end)
-            task.delay(animationDuration(0.42), function()
+            task.delay(0.42, function()
                 if uiAlive and slot.Parent then slot:Destroy() end
             end)
         end
@@ -1727,7 +1750,7 @@ function Library:CreateWindow(config)
                     Position = UDim2.fromOffset(rest.X.Offset, rest.Y.Offset + panelTuck),
                 }, 0.14)
                 motion(border, { Transparency = 1 }, 0.1)
-                task.delay(animationDuration(0.14), finish)
+                task.delay(0.14, finish)
             end
         end
         function picker:Open()
@@ -1921,10 +1944,10 @@ function Library:CreateWindow(config)
                 params.Font = tooltip.Label.FontFace
                 params.Size = 12
                 params.Width = width
-                return game:GetService("TextService"):GetTextBoundsAsync(params)
+                return TextService:GetTextBoundsAsync(params)
             end)
             if ok then return bounds end
-            return game:GetService("TextService")
+            return TextService
                 :GetTextSize(message, 12, Enum.Font.BuilderSans, Vector2.new(width, 1000))
         end
         local function fade(visible)
@@ -1974,9 +1997,9 @@ function Library:CreateWindow(config)
             owner.Destroying:Connect(function() self:Hide(owner) end)
         end
     end
-    track(game:GetService("RunService").RenderStepped:Connect(function(dt)
+    track(RunService.RenderStepped:Connect(function(dt)
         if not tooltip.Owner then return end
-        local mouse = UserInputService:GetMouseLocation() - game:GetService("GuiService"):GetGuiInset()
+        local mouse = UserInputService:GetMouseLocation() - GuiService:GetGuiInset()
         local ownerPosition, ownerSize = tooltip.Owner.AbsolutePosition, tooltip.Owner.AbsoluteSize
         if mouse.X < ownerPosition.X or mouse.Y < ownerPosition.Y
             or mouse.X >= ownerPosition.X + ownerSize.X or mouse.Y >= ownerPosition.Y + ownerSize.Y then
@@ -2091,6 +2114,11 @@ function Library:CreateWindow(config)
         local detachedHost, detachedScale
         local detachedWidth = 260
         local groupDrag, groupDragStart, groupDragOrigin, groupDragTarget, groupDragPoint
+        local groupAnimator
+        local function stopGroupAnimation()
+            if groupAnimator then groupAnimator:Disconnect() end
+            groupAnimator = nil
+        end
         local draggedTitle = false
         local groupConnections = {}
         local function groupTrack(connection)
@@ -2168,7 +2196,7 @@ function Library:CreateWindow(config)
                 if immediate then
                     groupContent.Visible = false
                 else
-                    task.delay(animationDuration(0.2), function()
+                    task.delay(0.2, function()
                         if frame.Parent and collapseRevision == revision and self.Collapsed then
                             groupContent.Visible = false
                         end
@@ -2230,6 +2258,7 @@ function Library:CreateWindow(config)
             local focused = UserInputService:GetFocusedTextBox()
             if focused and focused:IsDescendantOf(frame) then focused:ReleaseFocus() end
             groupDrag, groupDragTarget = nil, nil
+            stopGroupAnimation()
             local host = detachedHost
             frame.Parent = tab.Columns[side]
             frame.Position = UDim2.fromOffset(0, 0)
@@ -2240,6 +2269,32 @@ function Library:CreateWindow(config)
             return true
         end
         function group:IsDetached() return detachedHost ~= nil end
+        local function animateGroupDrag()
+            if groupAnimator then return end
+            groupAnimator = RunService.RenderStepped:Connect(function(dt)
+                if not detachedHost or not groupDragTarget then
+                    stopGroupAnimation()
+                    return
+                end
+                if dialogOpen then
+                    groupDrag, groupDragTarget = nil, nil
+                    detachedHost.ScrollingEnabled = true
+                    stopGroupAnimation()
+                    return
+                end
+                local current = Vector2.new(detachedHost.Position.X.Offset, detachedHost.Position.Y.Offset)
+                local target = clampGroupPosition(groupDragTarget)
+                target = Vector2.new(math.floor(target.X + 0.5), math.floor(target.Y + 0.5))
+                local nextPosition = approachPixels(current, target, 1 - math.exp(-32 * dt))
+                if current ~= nextPosition then
+                    detachedHost.Position = UDim2.fromOffset(nextPosition.X, nextPosition.Y)
+                end
+                if nextPosition == target and not groupDrag then
+                    groupDragTarget = nil
+                    stopGroupAnimation()
+                end
+            end)
+        end
         bindDragStart(title, function(input)
             if config.Detachable == false or dialogOpen or groupDrag then return end
             if
@@ -2265,6 +2320,7 @@ function Library:CreateWindow(config)
             draggedTitle = true
             if not detachedHost then group:Detach(groupDragOrigin) end
             groupDragTarget = clampGroupPosition(groupDragOrigin + delta)
+            animateGroupDrag()
         end))
         groupTrack(UserInputService.InputEnded:Connect(function(input)
             if input == groupDrag then
@@ -2286,25 +2342,13 @@ function Library:CreateWindow(config)
         end))
         groupTrack(UserInputService.WindowFocusReleased:Connect(function()
             groupDrag, groupDragTarget = nil, nil
+            stopGroupAnimation()
             if detachedHost then detachedHost.ScrollingEnabled = true end
-        end))
-        groupTrack(game:GetService("RunService").RenderStepped:Connect(function(dt)
-            if not detachedHost or not groupDragTarget then return end
-            if dialogOpen then
-                groupDrag, groupDragTarget = nil, nil
-                detachedHost.ScrollingEnabled = true
-                return
-            end
-            local current = Vector2.new(detachedHost.Position.X.Offset, detachedHost.Position.Y.Offset)
-            local target = clampGroupPosition(groupDragTarget)
-            target = Vector2.new(math.floor(target.X + 0.5), math.floor(target.Y + 0.5))
-            local nextPosition = approachPixels(current, target, 1 - math.exp(-32 * dt))
-            if nextPosition == target and not groupDrag then groupDragTarget = nil end
-            detachedHost.Position = UDim2.fromOffset(nextPosition.X, nextPosition.Y)
         end))
         local function resizeDetached()
             if not detachedHost then return end
             groupDrag, groupDragTarget = nil, nil
+            stopGroupAnimation()
             detachedHost.ScrollingEnabled = true
             detachedScale.Scale = math.min(scale.Scale, math.max(0.01, (viewport.AbsoluteSize.X - 16) / detachedWidth))
             resizeGroup(true)
@@ -2318,6 +2362,7 @@ function Library:CreateWindow(config)
             if detachedHost then detachedHost:Destroy() end
         end))
         frame.Destroying:Connect(function()
+            stopGroupAnimation()
             for _, connection in ipairs(groupConnections) do
                 connection:Disconnect()
             end
@@ -2415,7 +2460,7 @@ function Library:CreateWindow(config)
                 keyboardIcon.Visible = iconOnly
                 button.Text = iconOnly and ""
                     or (listening and "..." or shortKeyNames[self.Keybind.Name] or self.Keybind.Name)
-                local textWidth = game:GetService("TextService")
+                local textWidth = TextService
                     :GetTextSize(button.Text, 11, Enum.Font.BuilderSansMedium, Vector2.new(200, 22)).X
                 button.Size = UDim2.fromOffset(math.clamp(math.ceil(textWidth) + 14, 24, 96), 22)
                 text.Size = UDim2.new(1, -button.Size.X.Offset - 9, 1, 0)
@@ -2714,7 +2759,7 @@ function Library:CreateWindow(config)
                         Position = UDim2.fromOffset(rest.X.Offset, rest.Y.Offset + bindTuck),
                     }, 0.14)
                     motion(bindBorder, { Transparency = 1 }, 0.1)
-                    task.delay(animationDuration(0.14), finish)
+                    task.delay(0.14, finish)
                 end
             end
             function control:OnKeyCaptured()
@@ -2728,7 +2773,7 @@ function Library:CreateWindow(config)
                 local edge, gap = 34 + self.ColorSpace, 8
                 keyButton.Visible = self.HasKeyPicker
                 if self.HasKeyPicker then
-                    local textWidth = game:GetService("TextService")
+                    local textWidth = TextService
                         :GetTextSize(keyButton.Text, 11, Enum.Font.BuilderSansMedium, Vector2.new(200, 22)).X
                     local width = math.clamp(math.ceil(textWidth) + 14, 24, 72)
                     edge = edge + gap + width
@@ -2879,7 +2924,7 @@ function Library:CreateWindow(config)
                 }, 0.18, silent)
                 motion(dot, { Size = UDim2.fromOffset(silent and 14 or 17, silent and 14 or 12) }, 0.07, silent)
                 if not silent then
-                    task.delay(animationDuration(0.07), function()
+                    task.delay(0.07, function()
                         if dot.Parent and toggleRevision == revision then
                             motion(dot, { Size = UDim2.fromOffset(14, 14) }, 0.16)
                         end
@@ -3147,7 +3192,7 @@ function Library:CreateWindow(config)
                     return
                 end
                 if animator then return end
-                animator = game:GetService("RunService").RenderStepped:Connect(function(dt)
+                animator = RunService.RenderStepped:Connect(function(dt)
                     if not sliderAlive or not uiAlive or not container.Parent then
                         animator:Disconnect()
                         animator = nil
@@ -3615,7 +3660,7 @@ function Library:CreateWindow(config)
                         Position = UDim2.fromOffset(rest.X.Offset, rest.Y.Offset + menuTuck),
                     }, 0.14)
                     motion(menuBorder, { Transparency = 1 }, 0.1)
-                    task.delay(animationDuration(0.14), finish)
+                    task.delay(0.14, finish)
                 end
             end
             function control:Set(value, silent)
@@ -4663,7 +4708,7 @@ function Library:CreateWindow(config)
         local heartbeat
         if config.Stats then
             local elapsed, frames = 0, 0
-            heartbeat = game:GetService("RunService").RenderStepped:Connect(function(dt)
+            heartbeat = RunService.RenderStepped:Connect(function(dt)
                 if not frame.Visible then
                     elapsed, frames = 0, 0
                     return
@@ -4850,12 +4895,7 @@ function Library:CreateWindow(config)
         return true
     end
     function ThemeManager:GetContrastRatio()
-        local function luminance(color)
-            local function linear(c) return c <= 0.04045 and c / 12.92 or ((c + 0.055) / 1.055) ^ 2.4 end
-            return 0.2126 * linear(color.R) + 0.7152 * linear(color.G) + 0.0722 * linear(color.B)
-        end
-        local a, b = luminance(Theme.Text), luminance(Theme.Card)
-        return (math.max(a, b) + 0.05) / (math.min(a, b) + 0.05)
+        return contrast(Theme.Text, Theme.Card)
     end
     function ThemeManager:SyncPreset(name)
         self.Current = name
@@ -4925,9 +4965,8 @@ function Library:CreateWindow(config)
 
         local keybindRows, keybindEmpty = {}, nil
         local keybindDirty, keybindRefreshQueued = true, false
-        local textService = game:GetService("TextService")
         local function textWidth(text, size)
-            return math.ceil(textService:GetTextSize(text, size, Enum.Font.BuilderSansMedium, Vector2.new(400, 40)).X)
+            return math.ceil(TextService:GetTextSize(text, size, Enum.Font.BuilderSansMedium, Vector2.new(400, 40)).X)
         end
         local function renderKeybindMenu()
             if not uiAlive or not keybindMenu.Frame.Parent then return end
@@ -5499,7 +5538,7 @@ function Library:CreateWindow(config)
             showDock(true)
             render()
         end
-        track(game:GetService("RunService").RenderStepped:Connect(function(dt)
+        track(RunService.RenderStepped:Connect(function(dt)
             if not windowTransitioning then return end
             dt = math.min(dt, 1 / 30)
             local omega, damping = 17, 0.72
@@ -5555,13 +5594,13 @@ function Library:CreateWindow(config)
         local expanded = near or now < dockHoverUntil
         if expanded ~= dockExpanded then showDock(expanded) end
     end
-    track(game:GetService("RunService").RenderStepped:Connect(function(dt)
-        updateDockHover(
-            UserInputService:GetMouseLocation()
-                - game:GetService("GuiService"):GetGuiInset()
-                - viewport.AbsolutePosition,
-            os.clock()
-        )
+    track(RunService.RenderStepped:Connect(function(dt)
+        if dockAutoHide and dockEdge ~= "Top" then
+            updateDockHover(
+                UserInputService:GetMouseLocation() - GuiService:GetGuiInset() - viewport.AbsolutePosition,
+                os.clock()
+            )
+        end
         local target = dockExpanded and 1 or 0
         local hoverTarget = revealHover and 1 or 0
         if dockProgress == target and dockVelocity == 0 and revealHoverAmount == hoverTarget then return end
@@ -5579,6 +5618,7 @@ function Library:CreateWindow(config)
         end
         revealHoverAmount = revealHoverAmount
             + (hoverTarget - revealHoverAmount) * (1 - math.exp(-16 * dt))
+        if math.abs(revealHoverAmount - hoverTarget) < 0.0005 then revealHoverAmount = hoverTarget end
         renderDock()
     end))
     local function windowAnchor()
@@ -5678,7 +5718,7 @@ function Library:CreateWindow(config)
         local pointer = Vector2.new(input.Position.X, input.Position.Y)
         dragTarget = clampWindow(windowStart + pointer - dragStart)
     end))
-    track(game:GetService("RunService").RenderStepped:Connect(function(dt)
+    track(RunService.RenderStepped:Connect(function(dt)
         if hold.Input then
             if hold.Scroller and (hold.Scroller.CanvasPosition - hold.Canvas).Magnitude > 2 then
                 hold.Input = nil
@@ -5840,7 +5880,7 @@ function Library:CreateWindow(config)
                 math.floor(math.clamp(initialSize.Y + delta.Y, 320, maxHeight) + 0.5)
             )
         end))
-        track(game:GetService("RunService").RenderStepped:Connect(function(dt)
+        track(RunService.RenderStepped:Connect(function(dt)
             if not target then return end
             if dialogOpen or not root.Visible then
                 cancelWindowResize()
