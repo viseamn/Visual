@@ -1067,9 +1067,6 @@ function Library:CreateWindow(config)
         setGroupTransparency(holder, 1)
         holder:SetAttribute("PassInput", true)
         holder.Parent = slot
-        local cardScale = Instance.new("UIScale")
-        cardScale.Scale = 0.96
-        cardScale.Parent = holder
         local glow, glowRings = buildHalo(holder, toastGlowSpread, 12)
         glow.Size = UDim2.fromScale(1, 1)
         paintHalo(glowRings, Theme.Accent, 0.45)
@@ -1094,7 +1091,7 @@ function Library:CreateWindow(config)
         local card = rounded("Frame", "Card", holder, toastGlowSpread, toastGlowSpread, 0, 0, "Background", 12)
         card.AutomaticSize = Enum.AutomaticSize.XY
         local function fitHolder()
-            local size = card.AbsoluteSize / math.max(0.01, cardScale.Scale)
+            local size = card.AbsoluteSize
             holder.Size = UDim2.fromOffset(
                 math.ceil(size.X) + toastGlowSpread * 2,
                 math.ceil(size.Y) + toastGlowSpread * 2
@@ -1165,7 +1162,6 @@ function Library:CreateWindow(config)
             tween(holder, { Position = restingPosition() }, 0.45),
             tween(holder, { GroupTransparency = 0 }, 0.3),
         }
-        motion(cardScale, { Scale = 1 }, 0.4)
         local toast = { Closed = false, Slot = slot, Holder = holder, Order = toastOrder }
         function toast.Place()
             layoutSlot()
@@ -1187,7 +1183,6 @@ function Library:CreateWindow(config)
                 return
             end
             tween(holder, { Position = hiddenPosition(), GroupTransparency = 1 }, 0.28)
-            motion(cardScale, { Scale = 0.96 }, 0.28)
             task.delay(0.1, function()
                 if uiAlive and slot.Parent then tween(reveal, { Value = 0 }, 0.3) end
             end)
