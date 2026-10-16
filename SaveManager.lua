@@ -504,6 +504,7 @@ local function newManager()
             if child:IsA("TextButton") and child.Text == "Delete" then deleteButton = child end
         end
         local function applyAutoSaveState(enabled)
+            if not context or not context.IsAlive() then return end
             autoSaveToggle:Set(enabled, true)
             saveButton.Visible = not enabled
             arrange(enabled and { loadButton, deleteButton } or { loadButton, saveButton, deleteButton })
