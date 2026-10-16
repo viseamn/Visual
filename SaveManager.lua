@@ -5,6 +5,7 @@ local function newManager()
     local window, context
     local controlRegistry, ThemeManager
     local lastWritten, autoSaveThread, loading = nil, nil, false
+    local pendingAutoSave
     local function callback(self, name, ...)
         if type(self[name]) ~= "function" then return end
         local ok, err = pcall(self[name], ...)
@@ -103,6 +104,9 @@ local function newManager()
             local ok, data = pcall(snapshot, self)
             lastWritten = ok and data or nil
         end
+        if self.AutoSave and name then
+            pcall(writefile, self.Folder .. "/autosave-config.txt", name)
+        end
         callback(self, "OnActiveConfigChanged", name)
     end
     function SaveManager:GetActiveConfig() return self.ActiveConfig end
@@ -150,10 +154,14 @@ local function newManager()
                 return false, "AutoSaveInterval must be a finite number of at least 0.1 seconds"
             end
         end
+        pendingAutoSave = nil
         self.AutoSave = enabled
         if context and context.IsAlive() and hasFiles() then pcall(function()
             folderPath(self, "configs")
             writefile(self.Folder .. "/autosave.txt", enabled and "1" or "0")
+            if enabled and self.ActiveConfig then
+                writefile(self.Folder .. "/autosave-config.txt", self.ActiveConfig)
+            end
         end) end
         if not enabled and autoSaveThread then
             local thread = autoSaveThread
@@ -328,9 +336,35 @@ local function newManager()
         return ok and safeName(name) and name or nil
     end
     function SaveManager:LoadAutoloadConfig()
+        local resume = pendingAutoSave
+        if resume == nil then resume = not self.AutoSave and savedAutoSave(self) end
+        pendingAutoSave = nil
         local name = self:GetAutoloadConfig()
-        if not name then return true end
-        return self:Load(name)
+        if not name and resume then
+            local ok, target = pcall(function()
+                local path = self.Folder .. "/autosave-config.txt"
+                local hasTarget = isfile(path)
+                local saved = hasTarget and readfile(path) or "autosave"
+                assert(safeName(saved), "Invalid autosave config name")
+                local exists = isfile(folderPath(self, "configs") .. "/" .. saved .. ".json")
+                assert(not hasTarget or exists, "Autosave config not found: " .. saved)
+                return exists and saved or nil
+            end)
+            if not ok then
+                callback(self, "OnAutoSaveChanged", false)
+                return false, tostring(target)
+            end
+            name = target
+        end
+        if name then
+            local ok, err = self:Load(name)
+            if not ok then
+                if resume then callback(self, "OnAutoSaveChanged", false) end
+                return false, err
+            end
+        end
+        if resume then return self:SetAutoSave(true) end
+        return true
     end
     function SaveManager:DeleteAutoLoadConfig()
         return pcall(function()
@@ -485,7 +519,8 @@ local function newManager()
             group:SetControlDisabled(autoSaveToggle, true)
             group:SetControlDisabled(autoloadToggle, true)
         end
-        if savedAutoSave(self) then self:SetAutoSave(true) else applyAutoSaveState(self.AutoSave) end
+        pendingAutoSave = not self.AutoSave and savedAutoSave(self) or nil
+        applyAutoSaveState(self.AutoSave or pendingAutoSave == true)
 
         local jsonBox = transfer:AddTextbox({
             Name = "Config JSON",

@@ -129,7 +129,9 @@ SaveManager:SetFolder("Viz")
 SaveManager:BuildConfigSection(Tabs.Settings)
 ThemeManager:ApplyToTab(Tabs.Settings)
 
-ThemeManager:LoadDefault()
-SaveManager:LoadAutoloadConfig()
+local themeLoaded, themeError = ThemeManager:LoadDefault()
+if not themeLoaded then warn("[Viz] Default theme: " .. tostring(themeError)) end
+local configLoaded, configError = SaveManager:LoadAutoloadConfig()
+if not configLoaded then warn("[Viz] Startup config: " .. tostring(configError)) end
 
 -- Library:Unload() removes the UI.

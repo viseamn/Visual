@@ -340,7 +340,7 @@ local json = SaveManager:SaveJSON()
 local ok, err = SaveManager:LoadJSON(json)
 ```
 
-The autosave preference is remembered between sessions. When enabled, the manual Save button and New config field are hidden.
+The autosave preference and save target are remembered between sessions. Call `SaveManager:LoadAutoloadConfig()` after creating all controls (as in the example): it restores the startup config, or the previous autosave target if none is selected, before resuming autosave. Existing `autosave.json` files from earlier versions are restored too. If loading fails, autosave stays paused so the saved file is not overwritten. When enabled, the manual Save button and New config field are hidden.
 
 Configs are validated before applying values. A failed application rolls back; a callback error is reported after values have loaded. Unknown control IDs are ignored. Changing the manager's folder or window stops autosave and clears the active config.
 
