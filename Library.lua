@@ -4922,50 +4922,62 @@ function Library:CreateWindow(config)
     end
 
     local keybindMenu = addOverlay({ Name = "KeybindMenu", Text = "Keybinds", Visible = false })
-    keybindMenu.Frame.Size = UDim2.fromOffset(230, 72)
+    keybindMenu.Frame.Size = UDim2.fromOffset(252, 104)
     keybindMenu.Frame.Text = ""
-    keybindMenu.Frame:FindFirstChildOfClass("UICorner").CornerRadius = UDim.new(0, 10)
+    keybindMenu.Frame:FindFirstChildOfClass("UICorner").CornerRadius = UDim.new(0, 12)
     local keybindTitle = label(keybindMenu.Frame, "Keybinds", 13)
-    keybindTitle.Position = UDim2.fromOffset(32, 0)
-    keybindTitle.Size = UDim2.new(1, -80, 0, 36)
+    keybindTitle.Position = UDim2.fromOffset(48, 0)
+    keybindTitle.Size = UDim2.new(1, -120, 0, 44)
     setUIFont(keybindTitle, true)
     local keybindList = Instance.new("ScrollingFrame")
     keybindList.Name = "Entries"
-    keybindList.Position = UDim2.fromOffset(6, 42)
-    keybindList.Size = UDim2.new(1, -12, 1, -48)
+    keybindList.Position = UDim2.fromOffset(12, 54)
+    keybindList.Size = UDim2.new(1, -24, 1, -66)
     keybindList.BackgroundTransparency = 1
     keybindList.BorderSizePixel = 0
-    keybindList.ScrollBarThickness = 0
-    keybindList.ScrollBarImageTransparency = 1
+    keybindList.ScrollBarThickness = 2
+    keybindList.ScrollBarImageTransparency = 0.6
+    bindTheme(keybindList, "ScrollBarImageColor3", "Muted")
     keybindList.CanvasSize = UDim2.fromOffset(0, 0)
     keybindList.AutomaticCanvasSize = Enum.AutomaticSize.Y
     keybindList.Parent = keybindMenu.Frame
     local keybindLayout = Instance.new("UIListLayout")
-    keybindLayout.Padding = UDim.new(0, 2)
+    keybindLayout.Padding = UDim.new(0, 6)
     keybindLayout.SortOrder = Enum.SortOrder.LayoutOrder
     keybindLayout.Parent = keybindList
     keybindMenu.ShowToggleButtons = true
     do
-        local keybindWidth, keybindRowHeight, keybindVisibleRows = 230, 26, 8
+        local keybindWidth, keybindRowHeight, keybindVisibleRows = 252, 38, 8
         local frameStroke = Instance.new("UIStroke")
         frameStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
         bindTheme(frameStroke, "Color", "Border")
-        frameStroke.Transparency = 0.2
+        frameStroke.Transparency = 0.35
         frameStroke.Parent = keybindMenu.Frame
-        icon(keybindMenu.Frame, "keyboard", 12, 11, 14, "Accent")
-        local activeCount = label(keybindMenu.Frame, "", 11)
+        glassSurface(keybindMenu.Frame, 0.1, frameStroke)
+        local keybindBadge = rounded("Frame", "Badge", keybindMenu.Frame, 12, 10, 26, 26, "Search", 7)
+        icon(keybindBadge, "keyboard", 5, 5, 16, "Icon")
+        local activeCount = rounded("TextLabel", "ActiveCount", keybindMenu.Frame, 0, 0, 44, 22, "Search", 7)
+        activeCount.BackgroundTransparency = 0.2
         activeCount.AnchorPoint = Vector2.new(1, 0)
-        activeCount.Position = UDim2.new(1, -12, 0, 0)
-        activeCount.Size = UDim2.fromOffset(48, 36)
-        activeCount.TextXAlignment = Enum.TextXAlignment.Right
+        activeCount.Position = UDim2.new(1, -12, 0, 12)
+        activeCount.TextSize = 11
+        setUIFont(activeCount, true)
         bindTheme(activeCount, "TextColor3", "Muted")
-        local headerLine = rounded("Frame", "Divider", keybindMenu.Frame, 12, 36, 0, 1, "Border", 0)
+        local headerLine = rounded("Frame", "Divider", keybindMenu.Frame, 12, 44, 0, 1, "Border", 0)
         headerLine.Size = UDim2.new(1, -24, 0, 1)
+        headerLine.BackgroundTransparency = 0.35
 
         local keybindRows, keybindEmpty = {}, nil
         local keybindDirty, keybindRefreshQueued = true, false
         local function textWidth(text, size)
             return math.ceil(TextService:GetTextSize(text, size, Enum.Font.BuilderSansMedium, Vector2.new(400, 40)).X)
+        end
+        local function paintKeybindRow(entry)
+            motion(entry.Row, {
+                BackgroundColor3 = entry.Active and "Selected" or (entry.Hovering and entry.Interactive and "Hover" or "Search"),
+                BackgroundTransparency = entry.Hovering and entry.Interactive and 0.18 or (entry.Active and 0.18 or 0.4),
+            }, 0.16)
+            motion(entry.Stroke, { Transparency = entry.Active and 0.7 or 1 }, 0.16)
         end
         local function renderKeybindMenu()
             if not uiAlive or not keybindMenu.Frame.Parent then return end
@@ -4984,31 +4996,44 @@ function Library:CreateWindow(config)
             for index, control in ipairs(controls) do
                 local entry = keybindRows[control]
                 if not entry then
-                    local row = rounded("TextButton", control.Name, keybindList, 0, 0, 0, keybindRowHeight, "Hover", 6)
+                    local row = rounded("TextButton", control.Name, keybindList, 0, 0, 0, keybindRowHeight, "Search", 8)
                     row.Size = UDim2.new(1, 0, 0, keybindRowHeight)
-                    row.BackgroundTransparency = 1
-                    local dot = rounded("Frame", "Dot", row, 8, 10, 6, 6, "Muted", 3)
+                    row.BackgroundTransparency = 0.4
+                    local rowStroke = Instance.new("UIStroke")
+                    rowStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+                    bindTheme(rowStroke, "Color", "Border")
+                    rowStroke.Transparency = 1
+                    rowStroke.Parent = row
+                    local dot = rounded("Frame", "Dot", row, 10, 12, 3, 14, "Muted", 2)
                     local name = label(row, control.Name, 12)
-                    name.Position = UDim2.fromOffset(22, 0)
+                    name.Name = "Name"
+                    name.Position = UDim2.fromOffset(24, 3)
+                    setUIFont(name, true)
                     name.TextTruncate = Enum.TextTruncate.AtEnd
-                    local mode = label(row, "", 11)
-                    mode.AnchorPoint = Vector2.new(1, 0)
-                    mode.TextXAlignment = Enum.TextXAlignment.Right
+                    local mode = label(row, "", 10)
+                    mode.Name = "Mode"
+                    mode.Position = UDim2.fromOffset(24, 21)
                     bindTheme(mode, "TextColor3", "Muted")
-                    local chip = rounded("TextLabel", "Key", row, 0, 0, 22, 18, "Search", 5)
+                    local chip = rounded("TextLabel", "Key", row, 0, 0, 28, 24, "Card", 7)
                     chip.AnchorPoint = Vector2.new(1, 0.5)
-                    chip.Position = UDim2.new(1, -6, 0.5, 0)
+                    chip.Position = UDim2.new(1, -10, 0.5, 0)
                     chip.TextSize = 11
+                    chip.TextTruncate = Enum.TextTruncate.AtEnd
                     setUIFont(chip, true)
                     local chipStroke = Instance.new("UIStroke")
                     chipStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
                     bindTheme(chipStroke, "Color", "Border")
                     chipStroke.Parent = chip
-                    entry = { Row = row, Dot = dot, Name = name, Mode = mode, Chip = chip }
+                    chipStroke.Transparency = 0.2
+                    entry = { Row = row, Stroke = rowStroke, Dot = dot, Name = name, Mode = mode, Chip = chip }
                     row.MouseEnter:Connect(function()
-                        if entry.Interactive then motion(row, { BackgroundTransparency = 0.55 }, 0.12) end
+                        entry.Hovering = true
+                        paintKeybindRow(entry)
                     end)
-                    row.MouseLeave:Connect(function() motion(row, { BackgroundTransparency = 1 }, 0.16) end)
+                    row.MouseLeave:Connect(function()
+                        entry.Hovering = false
+                        paintKeybindRow(entry)
+                    end)
                     row.Activated:Connect(function()
                         if uiAlive and not dialogOpen and not control.Destroyed and entry.Interactive then
                             control:Set(not control.Value)
@@ -5021,7 +5046,8 @@ function Library:CreateWindow(config)
                 local on = control.Value and not control.Disabled
                 if on then active = active + 1 end
                 entry.Name.Text = control.Name
-                tween(entry.Name, { TextColor3 = on and "Text" or "Muted" }, 0.16)
+                bindTheme(entry.Name, "TextColor3", "Text")
+                motion(entry.Name, { TextTransparency = control.Disabled and 0.5 or (on and 0 or 0.15) }, 0.16)
                 tween(entry.Dot, { BackgroundColor3 = on and "Accent" or "Muted" }, 0.16)
                 motion(entry.Dot, { BackgroundTransparency = on and 0 or 0.6 }, 0.16)
                 local keys = {}
@@ -5033,24 +5059,27 @@ function Library:CreateWindow(config)
                 table.insert(keys, keyName)
                 entry.Chip.Text = table.concat(keys, "+")
                 bindTheme(entry.Chip, "TextColor3", unset and "Muted" or "Text")
-                local chipWidth = math.max(22, textWidth(entry.Chip.Text, 11) + 12)
-                entry.Chip.Size = UDim2.fromOffset(chipWidth, 18)
-                local modeText = control.KeybindMode ~= "Toggle" and control.KeybindMode or ""
-                local modeWidth = modeText == "" and 0 or textWidth(modeText, 11) + 8
+                local chipWidth = math.clamp(textWidth(entry.Chip.Text, 11) + 16, 28, 124)
+                entry.Chip.Size = UDim2.fromOffset(chipWidth, 24)
+                local modeText = unset and "Not set" or control.KeybindMode
+                if control.Disabled then modeText = modeText .. " · Disabled" end
                 entry.Mode.Text = modeText
-                entry.Mode.Position = UDim2.new(1, -chipWidth - 12, 0, 0)
-                entry.Mode.Size = UDim2.new(0, modeWidth, 1, 0)
-                entry.Name.Size = UDim2.new(1, -(22 + chipWidth + modeWidth + 16), 1, 0)
+                entry.Mode.Size = UDim2.new(1, -chipWidth - 44, 0, 12)
+                entry.Mode.TextTruncate = Enum.TextTruncate.AtEnd
+                entry.Name.Size = UDim2.new(1, -chipWidth - 44, 0, 18)
                 entry.Interactive = control.KeybindMode == "Toggle"
                     and not control.Disabled
                     and keybindMenu.ShowToggleButtons
+                entry.Active = on
+                paintKeybindRow(entry)
             end
-            activeCount.Text = #controls > 0 and (active .. "/" .. #controls) or ""
+            activeCount.Text = active .. "/" .. #controls
+            bindTheme(activeCount, "TextColor3", active > 0 and "Text" or "Muted")
             if #controls == 0 then
                 if not keybindEmpty then
                     keybindEmpty = label(keybindList, "No keybinds yet", 12)
-                    keybindEmpty.Position = UDim2.fromOffset(8, 0)
-                    keybindEmpty.Size = UDim2.new(1, -8, 0, keybindRowHeight)
+                    keybindEmpty.Size = UDim2.new(1, 0, 0, keybindRowHeight)
+                    keybindEmpty.TextXAlignment = Enum.TextXAlignment.Center
                     bindTheme(keybindEmpty, "TextColor3", "Muted")
                 end
             elseif keybindEmpty then
@@ -5058,7 +5087,7 @@ function Library:CreateWindow(config)
                 keybindEmpty = nil
             end
             local shown = math.clamp(#controls, 1, keybindVisibleRows)
-            keybindMenu.Frame.Size = UDim2.fromOffset(keybindWidth, 48 + shown * keybindRowHeight + (shown - 1) * 2)
+            keybindMenu.Frame.Size = UDim2.fromOffset(keybindWidth, 66 + shown * keybindRowHeight + (shown - 1) * 6)
         end
         refreshKeybindMenu = function(removedControl)
             local entry = removedControl and keybindRows[removedControl]
