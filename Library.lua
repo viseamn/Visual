@@ -831,6 +831,382 @@ function Library:CreateWindow(config)
             and not object.Active
             and object.BackgroundTransparency >= 1
     end
+
+    local function createLockOverlay(parent, options)
+        options = options or {}
+        local TITLE    = options.Title    or "Locked"
+        local SUBTITLE = options.Subtitle or "Under development"
+        local ACCENT   = options.Color    or Color3.fromRGB(232, 160, 50)
+        local DIM      = options.Dim      or 0.45  
+        local POSITION = options.Position or "Center" 
+
+        if parent:FindFirstChild("HardcodedLockAnchor") then return end
+        local Z = 999
+
+        local anchor = Instance.new("Frame")
+        anchor.Name = "HardcodedLockAnchor"
+        anchor.Size = UDim2.fromOffset(0, 0)
+        anchor.BackgroundTransparency = 1
+        anchor.BorderSizePixel = 0
+        anchor.ClipsDescendants = false
+        anchor.LayoutOrder = 2 ^ 30
+        anchor.ZIndex = Z
+        anchor.Parent = parent
+
+        local overlay = Instance.new("TextButton")
+        overlay.Name = "HardcodedLock"
+        overlay.BackgroundColor3 = Color3.fromRGB(6, 6, 9)
+        overlay.BackgroundTransparency = 1
+        overlay.Text = ""
+        overlay.AutoButtonColor = false
+        overlay.Active = true
+        overlay.Selectable = false
+        overlay.BorderSizePixel = 0
+        overlay.ZIndex = Z
+        overlay.Parent = anchor
+        Instance.new("UICorner", overlay).CornerRadius = UDim.new(0, 6)
+
+        local function getScale()
+            local s, p = 1, parent
+            while p do
+                local u = p:FindFirstChildOfClass("UIScale")
+                if u then s *= u.Scale end
+                p = p.Parent
+            end
+            return s
+        end
+        local function sync()
+            local s = getScale()
+            local size, pos, apos = parent.AbsoluteSize, parent.AbsolutePosition, anchor.AbsolutePosition
+            overlay.Size = UDim2.fromOffset(size.X / s, size.Y / s)
+            overlay.Position = UDim2.fromOffset((pos.X - apos.X) / s, (pos.Y - apos.Y) / s)
+        end
+        sync()
+        local syncConns = {
+            parent:GetPropertyChangedSignal("AbsoluteSize"):Connect(sync),
+            parent:GetPropertyChangedSignal("AbsolutePosition"):Connect(sync),
+            anchor:GetPropertyChangedSignal("AbsolutePosition"):Connect(sync),
+        }
+
+        local titleW = TextService:GetTextSize(TITLE, 15, Enum.Font.GothamBold, Vector2.new(1000, 20)).X
+        local subW   = TextService:GetTextSize(SUBTITLE, 12, Enum.Font.Gotham, Vector2.new(1000, 20)).X
+        local chipW  = math.max(titleW, subW) + 54 + 18
+        chipW = math.clamp(chipW, 150, math.max(150, parent.AbsoluteSize.X - 24))
+
+        local chip = Instance.new("Frame")
+        chip.Name = "Chip"
+        chip.AnchorPoint = Vector2.new(0.5, POSITION == "Top" and 0 or 0.5)
+        chip.Position = POSITION == "Top"
+            and UDim2.new(0.5, 0, 0, 10)
+            or UDim2.fromScale(0.5, 0.5)
+        chip.Size = UDim2.fromOffset(chipW, 54)
+        chip.BackgroundColor3 = Color3.fromRGB(18, 18, 22)
+        chip.BackgroundTransparency = 1
+        chip.BorderSizePixel = 0
+        chip.ZIndex = Z + 1
+        chip.Parent = overlay
+        Instance.new("UICorner", chip).CornerRadius = UDim.new(0, 10)
+
+        local stroke = Instance.new("UIStroke")
+        stroke.Color = ACCENT
+        stroke.Thickness = 1.5
+        stroke.Transparency = 1
+        stroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+        stroke.Parent = chip
+
+        local icon = Instance.new("Frame")
+        icon.Name = "Padlock"
+        icon.AnchorPoint = Vector2.new(0, 0.5)
+        icon.Position = UDim2.new(0, 16, 0.5, 0)
+        icon.Size = UDim2.fromOffset(24, 26)
+        icon.BackgroundTransparency = 1
+        icon.ZIndex = Z + 2
+        icon.Parent = chip
+
+        local shackle = Instance.new("Frame")
+        shackle.Position = UDim2.fromOffset(5, 0)
+        shackle.Size = UDim2.fromOffset(14, 18)
+        shackle.BackgroundTransparency = 1
+        shackle.ZIndex = Z + 2
+        shackle.Parent = icon
+        Instance.new("UICorner", shackle).CornerRadius = UDim.new(0, 7)
+        local shackleStroke = Instance.new("UIStroke")
+        shackleStroke.Color = ACCENT
+        shackleStroke.Thickness = 2.5
+        shackleStroke.Transparency = 1
+        shackleStroke.Parent = shackle
+
+        local body = Instance.new("Frame")
+        body.Position = UDim2.fromOffset(0, 11)
+        body.Size = UDim2.fromOffset(24, 15)
+        body.BackgroundColor3 = ACCENT
+        body.BackgroundTransparency = 1
+        body.BorderSizePixel = 0
+        body.ZIndex = Z + 3
+        body.Parent = icon
+        Instance.new("UICorner", body).CornerRadius = UDim.new(0, 4)
+
+        local dot = Instance.new("Frame")
+        dot.AnchorPoint = Vector2.new(0.5, 0)
+        dot.Position = UDim2.new(0.5, 0, 0, 3)
+        dot.Size = UDim2.fromOffset(5, 5)
+        dot.BackgroundColor3 = Color3.fromRGB(30, 22, 8)
+        dot.BackgroundTransparency = 1
+        dot.BorderSizePixel = 0
+        dot.ZIndex = Z + 4
+        dot.Parent = body
+        Instance.new("UICorner", dot).CornerRadius = UDim.new(1, 0)
+
+        local slit = Instance.new("Frame")
+        slit.AnchorPoint = Vector2.new(0.5, 0)
+        slit.Position = UDim2.new(0.5, 0, 0, 7)
+        slit.Size = UDim2.fromOffset(2, 5)
+        slit.BackgroundColor3 = Color3.fromRGB(30, 22, 8)
+        slit.BackgroundTransparency = 1
+        slit.BorderSizePixel = 0
+        slit.ZIndex = Z + 4
+        slit.Parent = body
+
+        local function makeLabel(name, text, size, font, color, y, h)
+            local l = Instance.new("TextLabel")
+            l.Name = name
+            l.BackgroundTransparency = 1
+            l.Position = UDim2.new(0, 54, 0, y)
+            l.Size = UDim2.new(1, -62, 0, h)
+            l.Text = text
+            l.TextSize = size
+            l.Font = font
+            l.TextColor3 = color
+            l.TextTransparency = 1
+            l.TextXAlignment = Enum.TextXAlignment.Left
+            l.TextTruncate = Enum.TextTruncate.AtEnd
+            l.ZIndex = Z + 2
+            l.Parent = chip
+            return l
+        end
+        local title    = makeLabel("Title", TITLE, 15, Enum.Font.GothamBold, Color3.new(1, 1, 1), 10, 18)
+        local subtitle = makeLabel("Subtitle", SUBTITLE, 12, Enum.Font.Gotham, Color3.fromRGB(170, 170, 180), 29, 15)
+
+        local saved = {}
+        local function lock(obj)
+            if obj == anchor or obj:IsDescendantOf(anchor) then return end
+            if obj:IsA("GuiObject") and saved[obj] == nil then
+                saved[obj] = obj.Interactable
+                obj.Interactable = false
+            end
+        end
+        for _, d in ipairs(parent:GetDescendants()) do lock(d) end
+        local addedConn = parent.DescendantAdded:Connect(lock)
+
+        local info = TweenInfo.new(0.3, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+        local function fade(inst, props) TweenService:Create(inst, info, props):Play() end
+        fade(overlay,       { BackgroundTransparency = DIM })
+        fade(chip,          { BackgroundTransparency = 0.12 })
+        fade(stroke,        { Transparency = 0.35 })
+        fade(shackleStroke, { Transparency = 0 })
+        fade(body,          { BackgroundTransparency = 0 })
+        fade(dot,           { BackgroundTransparency = 0 })
+        fade(slit,          { BackgroundTransparency = 0 })
+        fade(title,         { TextTransparency = 0 })
+        fade(subtitle,      { TextTransparency = 0 })
+
+        task.delay(0.35, function()
+            local pulse = TweenService:Create(
+                stroke,
+                TweenInfo.new(1.4, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut, -1, true),
+                { Transparency = 0.8 }
+            )
+            pulse:Play()
+        end)
+    end
+
+    local function createLockRow(parent, labelText, options)
+        options = options or {}
+        local TITLE    = options.Title    or "Locked"
+        local SUBTITLE = options.Subtitle or options.Text or "Under development"
+        local ACCENT   = options.Color    or Color3.fromRGB(232, 160, 50)
+        local DIM      = options.Dim      or 0.6   
+
+        if parent:FindFirstChild("HardcodedLockAnchor") then return end
+        local Z = 999
+
+        local anchor = Instance.new("Frame")
+        anchor.Name = "HardcodedLockAnchor"
+        anchor.Size = UDim2.fromOffset(0, 0)
+        anchor.BackgroundTransparency = 1
+        anchor.BorderSizePixel = 0
+        anchor.LayoutOrder = 2 ^ 30
+        anchor.ZIndex = Z
+        anchor.Parent = parent
+
+        local overlay = Instance.new("TextButton")
+        overlay.Name = "HardcodedLock"
+        overlay.BackgroundColor3 = Color3.fromRGB(6, 6, 9)
+        overlay.BackgroundTransparency = 1
+        overlay.Text = ""
+        overlay.AutoButtonColor = false
+        overlay.Active = true
+        overlay.Selectable = false
+        overlay.BorderSizePixel = 0
+        overlay.ZIndex = Z
+        overlay.ClipsDescendants = false
+        overlay.Parent = anchor
+        Instance.new("UICorner", overlay).CornerRadius = UDim.new(0, 6)
+
+        local function getScale()
+            local s, p = 1, parent
+            while p do
+                local u = p:FindFirstChildOfClass("UIScale")
+                if u then s *= u.Scale end
+                p = p.Parent
+            end
+            return s
+        end
+        local function sync()
+            local s = getScale()
+            local size, pos, apos = parent.AbsoluteSize, parent.AbsolutePosition, anchor.AbsolutePosition
+            overlay.Size = UDim2.fromOffset(size.X / s, size.Y / s)
+            overlay.Position = UDim2.fromOffset((pos.X - apos.X) / s, (pos.Y - apos.Y) / s)
+        end
+        sync()
+        local syncConns = {
+            parent:GetPropertyChangedSignal("AbsoluteSize"):Connect(sync),
+            parent:GetPropertyChangedSignal("AbsolutePosition"):Connect(sync),
+            anchor:GetPropertyChangedSignal("AbsolutePosition"):Connect(sync),
+        }
+
+        local titleW = TextService:GetTextSize(TITLE, 13, Enum.Font.GothamBold, Vector2.new(1000, 20)).X
+        local subW   = TextService:GetTextSize(SUBTITLE, 11, Enum.Font.Gotham, Vector2.new(1000, 20)).X
+        local PAD_L, ICON_W, GAP, PAD_R = 14, 16, 8, 16
+        local chipW = PAD_L + ICON_W + GAP + titleW + 8 + subW + PAD_R + 6
+        chipW = math.min(chipW, math.max(120, parent.AbsoluteSize.X - 28))
+
+        local chip = Instance.new("Frame")
+        chip.Name = "Chip"
+        chip.AnchorPoint = Vector2.new(0.5, 0.5)
+        chip.Position = UDim2.fromScale(0.5, 0.5)
+        local chipH = math.clamp(parent.AbsoluteSize.Y - 8, 20, 28)
+        chip.Size = UDim2.fromOffset(chipW, chipH)
+        chip.BackgroundColor3 = Color3.fromRGB(18, 18, 22)
+        chip.BackgroundTransparency = 1
+        chip.BorderSizePixel = 0
+        chip.ZIndex = Z + 1
+        chip.Parent = overlay
+        Instance.new("UICorner", chip).CornerRadius = UDim.new(0, 8)
+
+        local stroke = Instance.new("UIStroke")
+        stroke.Color = ACCENT
+        stroke.Thickness = 1
+        stroke.Transparency = 1
+        stroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+        stroke.Parent = chip
+
+        local icon = Instance.new("Frame")
+        icon.Name = "Padlock"
+        icon.AnchorPoint = Vector2.new(0, 0.5)
+        icon.Position = UDim2.new(0, PAD_L, 0.5, 0)
+        icon.Size = UDim2.fromOffset(ICON_W, 18)
+        icon.BackgroundTransparency = 1
+        icon.ZIndex = Z + 2
+        icon.Parent = chip
+
+        local shackle = Instance.new("Frame")
+        shackle.Position = UDim2.fromOffset(3, 0)
+        shackle.Size = UDim2.fromOffset(10, 12)
+        shackle.BackgroundTransparency = 1
+        shackle.ZIndex = Z + 2
+        shackle.Parent = icon
+        Instance.new("UICorner", shackle).CornerRadius = UDim.new(0, 5)
+        local shackleStroke = Instance.new("UIStroke")
+        shackleStroke.Color = ACCENT
+        shackleStroke.Thickness = 1.8
+        shackleStroke.Transparency = 1
+        shackleStroke.Parent = shackle
+
+        local body = Instance.new("Frame")
+        body.Position = UDim2.fromOffset(0, 8)
+        body.Size = UDim2.fromOffset(16, 10)
+        body.BackgroundColor3 = ACCENT
+        body.BackgroundTransparency = 1
+        body.BorderSizePixel = 0
+        body.ZIndex = Z + 3
+        body.Parent = icon
+        Instance.new("UICorner", body).CornerRadius = UDim.new(0, 3)
+
+        local dot = Instance.new("Frame")
+        dot.AnchorPoint = Vector2.new(0.5, 0)
+        dot.Position = UDim2.new(0.5, 0, 0, 2)
+        dot.Size = UDim2.fromOffset(3, 3)
+        dot.BackgroundColor3 = Color3.fromRGB(30, 22, 8)
+        dot.BackgroundTransparency = 1
+        dot.BorderSizePixel = 0
+        dot.ZIndex = Z + 4
+        dot.Parent = body
+        Instance.new("UICorner", dot).CornerRadius = UDim.new(1, 0)
+
+        local slit = Instance.new("Frame")
+        slit.AnchorPoint = Vector2.new(0.5, 0)
+        slit.Position = UDim2.new(0.5, 0, 0, 5)
+        slit.Size = UDim2.fromOffset(2, 3)
+        slit.BackgroundColor3 = Color3.fromRGB(30, 22, 8)
+        slit.BackgroundTransparency = 1
+        slit.BorderSizePixel = 0
+        slit.ZIndex = Z + 4
+        slit.Parent = body
+
+        local function makeLabel(name, text, size, font, color, x, w)
+            local l = Instance.new("TextLabel")
+            l.Name = name
+            l.BackgroundTransparency = 1
+            l.AnchorPoint = Vector2.new(0, 0.5)
+            l.Position = UDim2.new(0, x, 0.5, 0)
+            l.Size = UDim2.fromOffset(w + 2, 18)
+            l.Text = text
+            l.TextSize = size
+            l.Font = font
+            l.TextColor3 = color
+            l.TextTransparency = 1
+            l.TextXAlignment = Enum.TextXAlignment.Left
+            l.ZIndex = Z + 2
+            l.Parent = chip
+            return l
+        end
+        local titleX = PAD_L + ICON_W + GAP
+        local title    = makeLabel("Title", TITLE, 13, Enum.Font.GothamBold, Color3.new(1, 1, 1), titleX, titleW)
+        local subtitle = makeLabel("Subtitle", SUBTITLE, 11, Enum.Font.Gotham, Color3.fromRGB(170, 170, 180), titleX + titleW + 8, subW)
+
+        local saved = {}
+        local function lock(obj)
+            if obj == anchor or obj:IsDescendantOf(anchor) then return end
+            if obj:IsA("GuiObject") and saved[obj] == nil then
+                saved[obj] = obj.Interactable
+                obj.Interactable = false
+            end
+        end
+        for _, d in ipairs(parent:GetDescendants()) do lock(d) end
+        local addedConn = parent.DescendantAdded:Connect(lock)
+
+        local info = TweenInfo.new(0.3, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+        local function fade(inst, props) TweenService:Create(inst, info, props):Play() end
+        fade(overlay,       { BackgroundTransparency = DIM })
+        fade(chip,          { BackgroundTransparency = 0.12 })
+        fade(stroke,        { Transparency = 0.35 })
+        fade(shackleStroke, { Transparency = 0 })
+        fade(body,          { BackgroundTransparency = 0 })
+        fade(dot,           { BackgroundTransparency = 0 })
+        fade(slit,          { BackgroundTransparency = 0 })
+        fade(title,         { TextTransparency = 0 })
+        fade(subtitle,      { TextTransparency = 0 })
+
+        task.delay(0.35, function()
+            local pulse = TweenService:Create(
+                stroke,
+                TweenInfo.new(1.4, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut, -1, true),
+                { Transparency = 0.8 }
+            )
+            pulse:Play()
+        end)
+    end
     local function findDragStart(objects, boundary, bindings)
         for _, hit in ipairs(objects) do
             if hit:GetAttribute("PassInput") then continue end
@@ -2035,6 +2411,14 @@ function Library:CreateWindow(config)
         frame.LayoutOrder = #tab.Groups + 1
         group.Frame = frame
         frame:SetAttribute("BlocksWindowDrag", true)
+        if config.Status == "Locked" then
+            createLockOverlay(frame, {
+                Title = config.StatusTitle or "Locked",
+                Subtitle = config.StatusSubtitle or "Under development",
+                Dim = config.StatusDim or 0.45,
+                Position = config.StatusPosition or "Center"
+            })
+        end
         local border = Instance.new("UIStroke")
         bindTheme(border, "Color", "Border")
         border.Parent = frame
@@ -2609,6 +2993,13 @@ function Library:CreateWindow(config)
         function group:AddToggle(options)
             options = options or {}
             local container = row(options.Name or "Toggle", 28)
+            if options.Status == "Locked" then
+                createLockRow(container, options.Name or "Toggle", {
+                    Title = options.StatusTitle or "Locked",
+                    Subtitle = options.StatusSubtitle or "Under development",
+                    Dim = options.StatusDim or 0.6
+                })
+            end
             local text = label(container, options.Name or "Toggle")
             text.Size = UDim2.new(1, -128, 1, 0)
             text.TextTruncate = Enum.TextTruncate.AtEnd
@@ -4498,9 +4889,17 @@ function Library:CreateWindow(config)
         bindTheme(tab.Empty, "TextColor3", "Muted")
         tab.AddGroup = addGroup
         function tab:AddLeftGroupbox(name, iconName)
+            if type(name) == "table" then
+                name.Side = "Left"
+                return self:AddGroup(name)
+            end
             return self:AddGroup({ Name = name, Icon = iconName, Side = "Left" })
         end
         function tab:AddRightGroupbox(name, iconName)
+            if type(name) == "table" then
+                name.Side = "Right"
+                return self:AddGroup(name)
+            end
             return self:AddGroup({ Name = name, Icon = iconName, Side = "Right" })
         end
         function tab:Activate() selectTab(self) end
