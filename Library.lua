@@ -80,12 +80,17 @@ local dpiScales = { "50%", "75%", "100%", "125%", "150%", "175%", "200%" }
 
 local keyCodes = {}
 for _, key in ipairs(Enum.KeyCode:GetEnumItems()) do keyCodes[key.Name] = key end
+keyCodes["MouseButton1"] = Enum.UserInputType.MouseButton1
+keyCodes["MouseButton2"] = Enum.UserInputType.MouseButton2
+keyCodes["MouseButton3"] = Enum.UserInputType.MouseButton3
 local function resolveKeyCode(value)
     if type(value) == "string" then return keyCodes[value] end
-    if typeof(value) == "EnumItem" and value.EnumType == Enum.KeyCode then return value end
+    if typeof(value) == "EnumItem"
+        and (value.EnumType == Enum.KeyCode or value.EnumType == Enum.UserInputType) then
+        return value
+    end
     return nil
 end
-
 local function warnOnError(callback, ...)
     local ok, err = pcall(callback, ...)
     if not ok then warn(err) end
@@ -368,6 +373,7 @@ function Library:CreateWindow(config)
     assert(player, "Viz must run on the client")
 
     local playerGui = player:WaitForChild("PlayerGui")
+    local touchScale = UserInputService.TouchEnabled and 1.15 or 1
 
     local Theme = {
         Background = Color3.fromRGB(12, 13, 16),
@@ -429,11 +435,17 @@ function Library:CreateWindow(config)
     screen.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
     screen.DisplayOrder = 2147483647
     screen.Parent = playerGui
+    pcall(function()
+        GuiService.GuiNavigationEnabled = true
+    end)
 
     local function rounded(className, name, parent, x, y, width, height, color, radius)
         local object = newUI(className)
         object.Name = name
         object.Position = UDim2.fromOffset(x, y)
+        if touchScale > 1 and (className == "TextButton" or className == "TextBox") then
+            height = math.floor(height * touchScale + 0.5)
+        end
         object.Size = UDim2.fromOffset(width, height)
         local role = type(color) == "string" and color or nil
         object.BackgroundColor3 = role and Theme[role] or color
@@ -1325,6 +1337,9 @@ function Library:CreateWindow(config)
     local function animateButton(button, baseColor)
         local hovering = false
         local baseRole = type(baseColor) == "string" and baseColor or nil
+        if button:IsA("GuiButton") then
+            button.Selectable = true
+        end
         button.MouseEnter:Connect(function()
             hovering = true
             local popup = openDropdown and openDropdown.Options
@@ -1342,6 +1357,16 @@ function Library:CreateWindow(config)
             hovering = false
             tween(button, { BackgroundColor3 = baseRole or baseColor }, 0.2)
         end)
+        if button:IsA("GuiObject") then
+            button.SelectionGained:Connect(function()
+                hovering = true
+                tween(button, { BackgroundColor3 = "Hover" }, 0.16)
+            end)
+            button.SelectionLost:Connect(function()
+                hovering = false
+                tween(button, { BackgroundColor3 = baseRole or baseColor }, 0.2)
+            end)
+        end
         button.InputBegan:Connect(function(input)
             if
                 input.UserInputType == Enum.UserInputType.MouseButton1
@@ -1630,11 +1655,26 @@ function Library:CreateWindow(config)
     end
     local function handleKeyInput(input, processed)
         if UserInputService:GetFocusedTextBox() then return end
+        local isKeyboard = input.UserInputType == Enum.UserInputType.Keyboard
+        local isGamepad = input.UserInputType.Name:sub(1, 7) == "Gamepad"
+        local isMouse = input.UserInputType == Enum.UserInputType.MouseButton1
+            or input.UserInputType == Enum.UserInputType.MouseButton2
+            or input.UserInputType == Enum.UserInputType.MouseButton3
+
         if capturingKeybind then
-            if input.UserInputType ~= Enum.UserInputType.Keyboard then return end
+            if not isKeyboard and not isGamepad and not isMouse then return end
             local control = capturingKeybind
-            if input.KeyCode == Enum.KeyCode.Escape then
+            if input.KeyCode == Enum.KeyCode.Escape
+                or input.KeyCode == Enum.KeyCode.ButtonB
+                or input.KeyCode == Enum.KeyCode.ButtonStart then
                 cancelKeyCapture()
+                return
+            end
+            if isMouse then
+                capturingKeybind = nil
+                control:SetModifiers(heldModifiers())
+                control:SetKeybind(input.UserInputType)
+                if control.OnKeyCaptured then control:OnKeyCaptured() end
                 return
             end
             if input.KeyCode == Enum.KeyCode.Unknown then return end
@@ -1651,8 +1691,15 @@ function Library:CreateWindow(config)
             if control.OnKeyCaptured then control:OnKeyCaptured() end
             return
         end
-        if processed or dialogOpen or input.UserInputType ~= Enum.UserInputType.Keyboard then return end
-        if menuKeybind and menuKeybind.Keybind ~= Enum.KeyCode.Unknown and input.KeyCode == menuKeybind.Keybind then
+        if processed or dialogOpen then return end
+        if not isKeyboard and not isGamepad and not isMouse then return end
+        local menuKeyMatch = menuKeybind and (
+            (menuKeybind.Keybind ~= Enum.KeyCode.Unknown and input.KeyCode == menuKeybind.Keybind)
+            or (typeof(menuKeybind.Keybind) == "EnumItem"
+                and menuKeybind.Keybind.EnumType == Enum.UserInputType
+                and menuKeybind.Keybind == input.UserInputType)
+        )
+        if menuKeyMatch then
             local held, matches = heldModifiers(), true
             for name, keys in pairs(modifierKeys) do
                 if table.find(keys, input.KeyCode) then held[name] = nil end
@@ -1665,10 +1712,14 @@ function Library:CreateWindow(config)
         end
         if openDropdown then return end
         for control in pairs(keybindControls) do
+            local keyMatch = control.Keybind ~= Enum.KeyCode.Unknown
+                and control.Keybind == input.KeyCode
+            local mouseMatch = typeof(control.Keybind) == "EnumItem"
+                and control.Keybind.EnumType == Enum.UserInputType
+                and control.Keybind == input.UserInputType
             if
                 not control.Disabled
-                and control.Keybind ~= Enum.KeyCode.Unknown
-                and control.Keybind == input.KeyCode
+                and (keyMatch or mouseMatch)
             then
                 local held, matches = heldModifiers(), true
                 for name, keys in pairs(modifierKeys) do
@@ -1693,6 +1744,9 @@ function Library:CreateWindow(config)
         for control in pairs(keybindControls) do
             if control.Holding then
                 local released = input.KeyCode == control.Keybind
+                    or (typeof(control.Keybind) == "EnumItem"
+                        and control.Keybind.EnumType == Enum.UserInputType
+                        and control.Keybind == input.UserInputType)
                 for name in pairs(control.Modifiers) do
                     if modifierKeys[name] and table.find(modifierKeys[name], input.KeyCode) then released = true end
                 end
@@ -1839,6 +1893,12 @@ function Library:CreateWindow(config)
             tab.Empty.Text = query == "" and "No cards yet" or "No matching controls"
         end
     end
+    globalSearch.InputBegan:Connect(function(input)
+        if input.UserInputType.Name:sub(1, 7) == "Gamepad"
+            and input.KeyCode == Enum.KeyCode.ButtonA then
+            pcall(function() globalSearch:CaptureFocus() end)
+        end
+    end)
     globalSearch:GetPropertyChangedSignal("Text"):Connect(function()
         cancelKeyCapture()
         closeDropdown(true)
@@ -2072,6 +2132,35 @@ function Library:CreateWindow(config)
                 refresh(true)
             end)
         end)
+        square.Selectable = true
+        hueHit.Selectable = true
+        if options.Alpha ~= false then alphaHit.Selectable = true end
+        local gpConn = UserInputService.InputBegan:Connect(function(input)
+            if not canInteract(owner) then return end
+            if input.UserInputType.Name:sub(1, 7) ~= "Gamepad" then return end
+            local selected = GuiService.SelectedObject
+            if not selected then return end
+            local onSquare = selected == square or selected:IsDescendantOf(square)
+            local onHue = selected == hueHit or selected:IsDescendantOf(hueHit)
+            local onAlpha = selected == alphaHit or selected:IsDescendantOf(alphaHit)
+            if not (onSquare or onHue or onAlpha) then return end
+            local k = input.KeyCode
+            local changed = false
+            if onSquare then
+                if k == Enum.KeyCode.ButtonL1 then saturation = math.clamp(saturation - 0.05, 0, 1); changed = true end
+                if k == Enum.KeyCode.ButtonR1 then saturation = math.clamp(saturation + 0.05, 0, 1); changed = true end
+                if k == Enum.KeyCode.ButtonL2 then brightness = math.clamp(brightness - 0.05, 0, 1); changed = true end
+                if k == Enum.KeyCode.ButtonR2 then brightness = math.clamp(brightness + 0.05, 0, 1); changed = true end
+            elseif onHue then
+                if k == Enum.KeyCode.ButtonL1 or k == Enum.KeyCode.ButtonL2 then hue = math.clamp(hue - 0.02, 0, 1); changed = true end
+                if k == Enum.KeyCode.ButtonR1 or k == Enum.KeyCode.ButtonR2 then hue = math.clamp(hue + 0.02, 0, 1); changed = true end
+            elseif onAlpha then
+                if k == Enum.KeyCode.ButtonL1 or k == Enum.KeyCode.ButtonL2 then opacity = math.clamp(opacity - 0.05, 0, 1); changed = true end
+                if k == Enum.KeyCode.ButtonR1 or k == Enum.KeyCode.ButtonR2 then opacity = math.clamp(opacity + 0.05, 0, 1); changed = true end
+            end
+            if changed then refresh(true) end
+        end)
+        owner.Destroying:Connect(function() gpConn:Disconnect() end)
         hexInput.FocusLost:Connect(function()
             local hex = hexInput.Text:gsub("%s", ""):gsub("^#", "")
             if (#hex == 6 or #hex == 8) and hex:match("^[%x]+$") then
@@ -3404,10 +3493,18 @@ function Library:CreateWindow(config)
                 end
                 activeToggleDrag = gesture
             end)
-            button.Activated:Connect(function(input)
+            local function activateToggle(input)
                 if input and input == completedDragInput then return end
                 if activeToggleDrag and activeToggleDrag.Control == control and activeToggleDrag.Dragged then return end
                 if canInteract(container) and control.KeybindMode ~= "Always" then control:Set(not control.Value) end
+            end
+            button.Activated:Connect(activateToggle)
+            button.InputBegan:Connect(function(input)
+                if input.UserInputType.Name:sub(1, 7) == "Gamepad"
+                    and (input.KeyCode == Enum.KeyCode.ButtonR2 or input.KeyCode == Enum.KeyCode.ButtonX)
+                    and GuiService.SelectedObject == button then
+                    activateToggle()
+                end
             end)
             container.Destroying:Connect(function()
                 control.Destroyed = true
@@ -3748,6 +3845,30 @@ function Library:CreateWindow(config)
             bindInput(first, 1)
             if second then bindInput(second, 2) end
             control:Set(options.Default or (isRange and { minimum, maximum } or minimum), true)
+            hit.Selectable = true
+            local gpStep = step * 5
+            local gpConn = UserInputService.InputBegan:Connect(function(input)
+                if not canInteract(container) then return end
+                if input.UserInputType.Name:sub(1, 7) ~= "Gamepad" then return end
+                local selected = GuiService.SelectedObject
+                if not selected or (selected ~= hit and not selected:IsDescendantOf(container)) then return end
+                local delta = 0
+                if input.KeyCode == Enum.KeyCode.ButtonL1 or input.KeyCode == Enum.KeyCode.ButtonL2 then delta = -gpStep end
+                if input.KeyCode == Enum.KeyCode.ButtonR1 or input.KeyCode == Enum.KeyCode.ButtonR2 then delta = gpStep end
+                if delta == 0 then return end
+                if isRange then
+                    local target
+                    if selectedHandle == "Low" then
+                        target = { math.max(minimum, control.Low + delta), control.High }
+                    else
+                        target = { control.Low, math.min(maximum, control.High + delta) }
+                    end
+                    control:Set(target)
+                else
+                    control:Set(control.Value + delta)
+                end
+            end)
+            container.Destroying:Connect(function() gpConn:Disconnect() end)
             persist(
                 options,
                 isRange and "RangeSlider" or "Slider",
@@ -4946,6 +5067,9 @@ function Library:CreateWindow(config)
             end
         end)
         table.insert(tabs, tab)
+        pcall(function()
+            GuiService:AddSelectionParent("VizTab_" .. tab.Name, tab.Page)
+        end)
         centerNavigation()
         if #tabs == 1 then selectTab(tab) end
         return tab
@@ -5392,6 +5516,7 @@ function Library:CreateWindow(config)
                 if not entry then
                     local row = rounded("TextButton", control.Name, keybindList, 0, 0, 0, keybindRowHeight, "Search", 8)
                     row.Size = UDim2.new(1, 0, 0, keybindRowHeight)
+                    row.Selectable = true
                     row.BackgroundTransparency = 0.4
                     local rowStroke = Instance.new("UIStroke")
                     rowStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
@@ -6310,7 +6435,14 @@ function Library:CreateWindow(config)
 
     local autoHideControl, keybindListControl, settingsTab, notificationPositionControl, layoutControl
     local searchStyleControl
-    menuKeybind = { Keybind = config.MenuKey or Enum.KeyCode.RightShift, Modifiers = {} }
+    local defaultMenuKey = config.MenuKey
+    if not defaultMenuKey then
+        local gpOnly = UserInputService.GamepadEnabled
+            and not UserInputService.KeyboardEnabled
+            and not UserInputService.TouchEnabled
+        defaultMenuKey = gpOnly and Enum.KeyCode.ButtonL3 or Enum.KeyCode.RightShift
+    end
+    menuKeybind = { Keybind = defaultMenuKey, Modifiers = {} }
     function menuKeybind:RefreshKeybind() end
     function menuKeybind:SetModifiers(value)
         self.Modifiers = {}
@@ -6322,6 +6454,17 @@ function Library:CreateWindow(config)
         self.Keybind = assert(resolveKeyCode(key), "Invalid menu key")
     end
     menuKeybind:SetKeybind(menuKeybind.Keybind)
+    task.delay(0.75, function()
+        if not uiAlive then return end
+        local keyName = shortKeyNames[menuKeybind.Keybind.Name] or menuKeybind.Keybind.Name
+        local hasKey = UserInputService.KeyboardEnabled or UserInputService.GamepadEnabled
+        local hasLogo = UserInputService.TouchEnabled or UserInputService.GamepadEnabled
+        local parts = {}
+        if hasKey then table.insert(parts, "press " .. keyName) end
+        if hasLogo then table.insert(parts, "tap the logo") end
+        local hint = #parts > 0 and ("To open the menu: " .. table.concat(parts, " or ")) or "Menu ready"
+        notify({ Title = "Byte", Content = hint, Icon = "info", Duration = 8 })
+    end)
     registerControl(
         "ui_menu_keybind",
         "Keybind",
@@ -6668,7 +6811,13 @@ function Library:CreateWindow(config)
     end
     if config.DPIScale then window:SetDPIScale(config.DPIScale) end
     if config.ToggleButton == nil then
-        window:SetToggleButtonVisible(UserInputService.TouchEnabled)
+        local platform = UserInputService:GetPlatform()
+        local isConsole = (platform == Enum.Platform.XBoxOne or platform == Enum.Platform.XBox360
+            or platform == Enum.Platform.PS4 or platform == Enum.Platform.PS5)
+        local needsFloating = UserInputService.TouchEnabled
+            or UserInputService.GamepadEnabled
+            or isConsole
+        window:SetToggleButtonVisible(needsFloating)
     else
         window:SetToggleButtonVisible(config.ToggleButton == true)
     end
