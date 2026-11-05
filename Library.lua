@@ -3046,7 +3046,7 @@ function Library:CreateWindow(config)
             local container = row(text or "Label", 0)
             container.AutomaticSize = Enum.AutomaticSize.Y
             local labelPadding = Instance.new("UIPadding")
-            labelPadding.PaddingTop, labelPadding.PaddingBottom = UDim.new(0, 6), UDim.new(0, 6)
+            labelPadding.PaddingTop, labelPadding.PaddingBottom = UDim.new(0, 3), UDim.new(0, 3)
             labelPadding.Parent = container
             local object = label(container, text or "Label")
             object.Size = UDim2.new(1, 0, 0, 16)
