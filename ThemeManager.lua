@@ -141,9 +141,7 @@ local function newManager()
     function ThemeManager:ApplyToTab(tab)
         local group = tab:AddGroup({ Name = "Appearance", Side = "Right", Icon = "palette" })
         local theme = group:AddTab("Theme")
-        local colors = group:AddTab("Colors")
         local interface = group:AddTab("Interface")
-        local saved = group:AddTab("Saved")
         self.StyleSection = interface
         if window.AddInterfaceControls then
             window:AddInterfaceControls(interface)
@@ -203,27 +201,9 @@ local function newManager()
             end,
         })
         theme:AddDivider()
-        theme:AddButton({
-            Name = "Reset to default",
-            Callback = function()
-                showDialog({
-                    Title = "Reset theme",
-                    Content = "Restore the default UI colors and font?",
-                    OnConfirm = function()
-                        self:ApplyThemeData({ Font = "BuilderSans" })
-                        local ok, err = self:ApplyTheme("Default")
-                        if ok then
-                            selector:Set("Default", true)
-                        else
-                            report("Reset theme", ok, err)
-                        end
-                    end,
-                })
-            end,
-        })
         self.ColorControls = {}
         for _, role in ipairs({ "Accent", "Icon", "Background", "Card", "Text", "Border" }) do
-            self.ColorControls[role] = colors:AddColorPicker({
+            self.ColorControls[role] = theme:AddColorPicker({
                 Name = role,
                 Default = Theme[role],
                 Alpha = false,
@@ -232,15 +212,15 @@ local function newManager()
             })
         end
         local ratio = self:GetContrastRatio()
-        self.ContrastLabel = colors:AddLabel(
+        self.ContrastLabel = theme:AddLabel(
             string.format(
                 "Text/card contrast: %s (%.1f:1)",
                 ratio >= 4.5 and "good" or "low",
                 ratio
             )
         )
-        saved:AddDivider("Save as")
-        local nameBox = saved:AddTextbox({ Name = "Name", Placeholder = "My theme", NoSave = true })
+        theme:AddDivider()
+        local nameBox = theme:AddTextbox({ Name = "Name", Placeholder = "My theme", NoSave = true })
         local function refreshList()
             local values, err = names()
             if not err then
@@ -276,7 +256,7 @@ local function newManager()
         nameBox.FocusLost:Connect(function(enterPressed)
             if enterPressed and nameBox.Text:match("%S") then saveTheme() end
         end)
-        saved:AddButton({
+        theme:AddButton({
             Name = "Save",
             Callback = saveTheme,
             Buttons = {
@@ -315,6 +295,25 @@ local function newManager()
                     end,
                 },
             },
+        })
+        theme:AddDivider()
+        theme:AddButton({
+            Name = "Reset to default",
+            Callback = function()
+                showDialog({
+                    Title = "Reset theme",
+                    Content = "Restore the default UI colors and font?",
+                    OnConfirm = function()
+                        self:ApplyThemeData({ Font = "BuilderSans" })
+                        local ok, err = self:ApplyTheme("Default")
+                        if ok then
+                            selector:Set("Default", true)
+                        else
+                            report("Reset theme", ok, err)
+                        end
+                    end,
+                })
+            end,
         })
         local core = bound().Theme
         core.ColorControls, core.FontControl, core.ImageControl =

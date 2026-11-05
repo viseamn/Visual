@@ -528,26 +528,12 @@ local function newManager()
         pendingAutoSave = not self.AutoSave and savedAutoSave(self) or nil
         applyAutoSaveState(self.AutoSave or pendingAutoSave == true)
 
-        transfer:AddLabel("Paste a config below and press Import, or press Export to copy the current setup.")
         local jsonBox = transfer:AddTextbox({
             Name = "Config JSON",
             Placeholder = "Paste a config JSON here",
             NoSave = true,
             MultiLine = true,
         })
-        local jsonStatus = transfer:AddLabel("Nothing pasted yet.")
-        local function describeJSON(text)
-            if text:match("^%s*$") then return "Nothing pasted yet." end
-            local ok, data = pcall(function() return HttpService:JSONDecode(text) end)
-            if not ok or type(data) ~= "table" then return "Not valid JSON." end
-            if data.Version ~= 1 or type(data.Controls) ~= "table" then
-                return "Valid JSON, but not a Viz config."
-            end
-            return "Valid config, ready to import."
-        end
-        jsonBox:GetPropertyChangedSignal("Text"):Connect(function()
-            jsonStatus.Text = describeJSON(jsonBox.Text)
-        end)
         transfer:AddButton({
             Name = "Import",
             Callback = function()
