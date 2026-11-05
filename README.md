@@ -92,7 +92,7 @@ Viz runs on the client. In Studio, use JSON import/export with your own storage;
 
 | | |
 | :--- | :--- |
-| **Layout** | Floating bar on any screen edge, or a rail inside the window; auto-hide, draggable and resizable window |
+| **Layout** | Dock on any screen edge, auto-hide, draggable and resizable window |
 | **Panels** | Collapsible groupboxes, sections and detachable cards |
 | **Controls** | Toggles, sliders, dropdowns, textboxes, keybinds, color pickers and more |
 | **Search** | Filter tabs, panels and controls as you type |
@@ -258,11 +258,7 @@ local Window = Library:CreateWindow({
 })
 ```
 
-`Layout` accepts `"Bottom bar"`, `"Top bar"`, `"Left bar"`, `"Right bar"` or `"Rail"`. `SearchStyle` accepts `"Bar"` or `"Header"`.
-
-The four bar layouts dock a floating pill on a screen edge. `"Rail"` is the exception: a 64px icon column drawn inside the window along its left edge, with the logo at the top, tabs below it, and the search button and profile above the bottom. Nothing floats outside the window, so it never collides with the game HUD. The rail takes its width out of the window body, not out of `Size`.
-
-In a rail layout the header collapses when `SearchStyle` is `"Bar"`, because the rail already carries the search button. Set `SearchStyle = "Header"` to keep a 54px header and put the search field there.
+`Layout` accepts `"Bottom bar"`, `"Top bar"`, `"Left bar"` or `"Right bar"`. `SearchStyle` accepts `"Bar"` or `"Header"`.
 
 <details>
 <summary><b>Window methods</b></summary>

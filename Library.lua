@@ -74,15 +74,8 @@ Library._Storage = {
     Delete = deleteJSON,
 }
 
-local layoutEdges = {
-    ["Bottom bar"] = "Bottom",
-    ["Top bar"] = "Top",
-    ["Left bar"] = "Left",
-    ["Right bar"] = "Right",
-    ["Rail"] = "Left",
-}
-local layoutStyles = { "Bottom bar", "Top bar", "Left bar", "Right bar", "Rail" }
-local railWidth = 64
+local layoutEdges = { ["Bottom bar"] = "Bottom", ["Top bar"] = "Top", ["Left bar"] = "Left", ["Right bar"] = "Right" }
+local layoutStyles = { "Bottom bar", "Top bar", "Left bar", "Right bar" }
 local dpiScales = { "50%", "75%", "100%", "125%", "150%", "175%", "200%" }
 
 local keyCodes = {}
@@ -345,7 +338,7 @@ function Library:CreateWindow(config)
     assert(config.CanvasGroups == nil or type(config.CanvasGroups) == "boolean", "CanvasGroups expects a boolean")
     assert(
         config.Layout == nil or layoutEdges[config.Layout],
-        "Layout must be Bottom bar, Top bar, Left bar, Right bar or Rail"
+        "Layout must be Bottom bar, Top bar, Left bar or Right bar"
     )
     assert(
         config.SearchStyle == nil or config.SearchStyle == "Bar" or config.SearchStyle == "Header",
@@ -666,7 +659,6 @@ function Library:CreateWindow(config)
     local layoutStyle = "Bottom bar"
     local searchStyle = "Bar"
     local dockEdge = "Bottom"
-    local railMode = false
     local uiShown = true
     local windowTransitioning = false
     local windowMotionHost = newUI("CanvasGroup")
@@ -748,17 +740,6 @@ function Library:CreateWindow(config)
     backgroundCorner.Parent = backgroundImage
     local header = rounded("Frame", "Header", root, 0, 0, 584, 54, "Background", 17)
     header.BackgroundTransparency = 1
-    local railDivider = Instance.new("Frame")
-    railDivider.Name = "RailDivider"
-    railDivider.AnchorPoint = Vector2.new(1, 0)
-    railDivider.Position = UDim2.new(0, railWidth, 0, 0)
-    railDivider.Size = UDim2.new(0, 1, 1, 0)
-    railDivider.BackgroundTransparency = 0.9
-    railDivider.BorderSizePixel = 0
-    railDivider.ZIndex = 3
-    railDivider.Visible = false
-    bindTheme(railDivider, "BackgroundColor3", "Text")
-    railDivider.Parent = root
 
     local function icon(parent, name, x, y, size, color, role)
         local image = Instance.new("ImageLabel")
@@ -5711,25 +5692,15 @@ function Library:CreateWindow(config)
         end
         layoutDockSearch = function(animate)
             rim.Enabled = dockEdge ~= "Top"
-            card.ZIndex = railMode and 60 or 1
             do
                 local right = dockEdge == "Right"
                 local rest, away
-                if railMode then
-                    dockSearch.AnchorPoint = Vector2.new(0.5, 1)
-                    dockSearch.Position = UDim2.new(0.5, 0, 1, -54)
-                    dockSearch.Size = UDim2.fromOffset(42, 42)
-                    dockSearch.BackgroundTransparency = (hovering or box:IsFocused()) and 0.65 or 1
-                    glyph.Position = UDim2.fromOffset(13, 13)
-                    card.Size = UDim2.fromOffset(236, 48)
-                    card.AnchorPoint = Vector2.new(0, 0.5)
-                    rest, away = UDim2.new(0, 54, 0.5, 0), UDim2.new(0, 46, 0.5, 0)
-                elseif dockEdge == "Top" then
+                if dockEdge == "Top" then
                     dockSearch.AnchorPoint = Vector2.new(1, 0.5)
                     dockSearch.Position = UDim2.new(1, -6, 0.5, 0)
-                    dockSearch.Size = UDim2.fromOffset(36, 36)
+                    dockSearch.Size = UDim2.fromOffset(40, 40)
                     dockSearch.BackgroundTransparency = (hovering or box:IsFocused()) and 0.65 or 1
-                    glyph.Position = UDim2.fromOffset(10, 10)
+                    glyph.Position = UDim2.fromOffset(12, 12)
                     local stripWidth = sidebar.Size.X.Offset
                     card.Size = UDim2.fromOffset(math.max(236, stripWidth), 48)
                     card.AnchorPoint = Vector2.new(0.5, 1)
@@ -5738,9 +5709,9 @@ function Library:CreateWindow(config)
                 elseif dockEdge == "Bottom" then
                     dockSearch.AnchorPoint = Vector2.new(0, 0.5)
                     dockSearch.Position = UDim2.new(0, 8, 0.5, 0)
-                    dockSearch.Size = UDim2.fromOffset(40, 40)
+                    dockSearch.Size = UDim2.fromOffset(44, 44)
                     dockSearch.BackgroundTransparency = (hovering or box:IsFocused()) and 0.65 or 1
-                    glyph.Position = UDim2.fromOffset(12, 12)
+                    glyph.Position = UDim2.fromOffset(14, 14)
                     card.Size = UDim2.fromOffset(236, 48)
                     card.AnchorPoint = Vector2.new(0.5, 1)
                     local centre = sidebar.Parent.Size.X.Offset / 2 - 8
@@ -5748,9 +5719,9 @@ function Library:CreateWindow(config)
                 else
                     dockSearch.AnchorPoint = Vector2.new(0.5, 0)
                     dockSearch.Position = UDim2.new(0.5, 0, 0, 8)
-                    dockSearch.Size = UDim2.fromOffset(40, 40)
+                    dockSearch.Size = UDim2.fromOffset(44, 44)
                     dockSearch.BackgroundTransparency = (hovering or box:IsFocused()) and 0.65 or 1
-                    glyph.Position = UDim2.fromOffset(12, 12)
+                    glyph.Position = UDim2.fromOffset(14, 14)
                     card.Size = UDim2.fromOffset(236, 48)
                     card.AnchorPoint = Vector2.new(right and 1 or 0, 0.5)
                     rest = UDim2.new(right and 0 or 1, right and -20 or 20, 0.5, 0)
@@ -5898,13 +5869,13 @@ function Library:CreateWindow(config)
     end
     local function renderDock()
         local progress = math.clamp(dockProgress, 0, 1)
-        local hiddenDepth = 12 + (dockEdge == "Top" and 48 or 56) * dockFitScale + dockScreenGap()
+        local hiddenDepth = 12 + (dockEdge == "Top" and 52 or 64) * dockFitScale + dockScreenGap()
         placeAtEdge(dockHost, (dockRestInward() + hiddenDepth) * dockProgress - hiddenDepth)
-        dockHost.Visible = not railMode and dockEdge ~= "Top" and (dockProgress > 0.002 or dockExpanded)
+        dockHost.Visible = dockEdge ~= "Top" and (dockProgress > 0.002 or dockExpanded)
         dockScale.Scale = dockFitScale * (0.94 + 0.06 * dockProgress)
         dockGlass.BackgroundTransparency = (0.08 + (1 - progress) * 0.22) * glassOpacityFactor
         dockRim.Transparency = 0.92 + (1 - progress) * 0.08
-        local reveal = not railMode and dockAutoHide and dockEdge ~= "Top" and (1 - progress) or 0
+        local reveal = dockAutoHide and dockEdge ~= "Top" and (1 - progress) or 0
         dockReveal.Visible = reveal > 0.005
         dockReveal.Interactable = not dockExpanded and reveal > 0.2
         placeAtEdge(dockReveal, 2 - dockScreenGap() - 6 * progress)
@@ -5920,72 +5891,24 @@ function Library:CreateWindow(config)
         renderDock()
     end
     refreshDockLayout = function()
-        if railMode then
-            sidebar.Parent = root
-            sidebar.AnchorPoint = Vector2.zero
-            sidebar.Position = UDim2.fromOffset(0, 0)
-            sidebar.Size = UDim2.new(0, railWidth, 1, 0)
-            sidebar.ZIndex = 2
-            sidebar.Active = false
-            dockHost.Visible = false
-            dockReveal.Visible = false
-            dockReveal.Interactable = false
-            railDivider.Visible = true
-            local headHeight = searchStyle == "Header" and 54 or 0
-            local contentTop = headHeight > 0 and 54 or 12
-            header.Position = UDim2.fromOffset(railWidth, 0)
-            header.Size = UDim2.new(1, -railWidth, 0, headHeight)
-            header.ZIndex = 1
-            body.Position = UDim2.fromOffset(railWidth, 0)
-            body.Size = UDim2.new(1, -railWidth, 1, 0)
-            content.Position = UDim2.fromOffset(12, contentTop)
-            content.Size = UDim2.new(1, -24, 1, -(contentTop + 12))
-            logo.Parent = sidebar
-            logo.AnchorPoint = Vector2.new(0.5, 0)
-            logo.Position = UDim2.new(0.5, 0, 0, 14)
-            logo.Size = UDim2.fromOffset(28, 28)
-            for _, tab in ipairs(tabs) do
-                tab.Title.Visible = false
-                tab.Button.Size = UDim2.fromOffset(44, 44)
-                tab.Icon.Position = UDim2.fromOffset(11, 11)
-                tab.Icon.Size = UDim2.fromOffset(22, 22)
-            end
-            navigationGroup.Position = UDim2.fromOffset(6, 58)
-            navigationGroup.Size = UDim2.new(0, railWidth - 12, 1, -58 - 106)
-            navigationLayout.Padding = UDim.new(0, 8)
-            navigationPadding.PaddingTop, navigationPadding.PaddingBottom = UDim.new(0, 2), UDim.new(0, 2)
-            navigationPadding.PaddingLeft, navigationPadding.PaddingRight = UDim.new(0, 0), UDim.new(0, 0)
-            profile.Visible = true
-            profile.AnchorPoint = Vector2.new(0.5, 1)
-            profile.Position = UDim2.new(0.5, 0, 1, -10)
-            dockDivider.Visible = false
-            searchField.Position = UDim2.fromOffset(18, 13)
-            dockSearch.Visible = searchStyle == "Bar"
-            layoutDockSearch()
-            if activeTab then selectTab(activeTab, true) end
-            return
-        end
         local strip = dockEdge == "Top"
+        local tabSize = strip and 40 or 44
+        local iconPad = strip and 10 or 11
+        local iconSize = strip and 20 or 22
         local tabSpan = 0
         for _, tab in ipairs(tabs) do
             tab.Title.Visible = false
-            if strip then
-                tab.Button.Size = UDim2.fromOffset(36, 36)
-                tab.Icon.Position = UDim2.fromOffset(9, 9)
-                tab.Icon.Size = UDim2.fromOffset(18, 18)
-            else
-                tab.Button.Size = UDim2.fromOffset(40, 40)
-                tab.Icon.Position = UDim2.fromOffset(10, 10)
-                tab.Icon.Size = UDim2.fromOffset(20, 20)
-            end
-            tabSpan = tabSpan + tab.Button.Size.X.Offset + 6
+            tab.Button.Size = UDim2.fromOffset(tabSize, tabSize)
+            tab.Icon.Position = UDim2.fromOffset(iconPad, iconPad)
+            tab.Icon.Size = UDim2.fromOffset(iconSize, iconSize)
+            tabSpan = tabSpan + tabSize + 6
         end
         local vertical = dockVertical()
-        local thickness = strip and 48 or 56
-        local searchSpan = searchStyle ~= "Bar" and 0 or (strip and 42 or 46)
+        local thickness = strip and 52 or 64
+        local searchSpan = searchStyle ~= "Bar" and 0 or (strip and 46 or 52)
         local available = vertical and viewport.AbsoluteSize.Y or viewport.AbsoluteSize.X
         local length = strip and (6 + tabSpan + searchSpan)
-            or math.min(62 + searchSpan + #tabs * 46, math.max(108 + searchSpan, available - 24))
+            or math.min(68 + searchSpan + #tabs * 50, math.max(116 + searchSpan, available - 24))
         local headerSearch = strip and searchStyle == "Header"
         if strip then
             local room = root.Size.X.Offset - (headerSearch and 60 + 242 or 120)
@@ -5993,7 +5916,7 @@ function Library:CreateWindow(config)
             sidebar.Parent = header
             sidebar.AnchorPoint = Vector2.new(headerSearch and 0 or 0.5, 0.5)
             sidebar.Position = headerSearch and UDim2.new(0, 60, 0.5, 0) or UDim2.fromScale(0.5, 0.5)
-            sidebar.Size = UDim2.fromOffset(length, 48)
+            sidebar.Size = UDim2.fromOffset(length, 52)
         else
             sidebar.Parent = dockHost
             sidebar.AnchorPoint = Vector2.zero
@@ -6015,21 +5938,21 @@ function Library:CreateWindow(config)
         layoutDockSearch()
         if strip then
             navigationGroup.Position = UDim2.fromOffset(6, 6)
-            navigationGroup.Size = UDim2.new(1, -12 - searchSpan, 0, 36)
+            navigationGroup.Size = UDim2.new(1, -12 - searchSpan, 0, 40)
         elseif vertical then
             navigationGroup.Position = UDim2.fromOffset(6, 8 + searchSpan)
-            navigationGroup.Size = UDim2.new(0, 44, 1, -64 - searchSpan)
+            navigationGroup.Size = UDim2.new(0, 48, 1, -68 - searchSpan)
             profile.AnchorPoint = Vector2.new(0.5, 1)
             profile.Position = UDim2.new(0.5, 0, 1, -10)
             dockDivider.Size = UDim2.fromOffset(24, 1)
             dockDivider.Position = UDim2.new(0, 16, 1, -50)
         else
-            navigationGroup.Position = UDim2.fromOffset(8 + searchSpan, 6)
-            navigationGroup.Size = UDim2.new(1, -64 - searchSpan, 0, 44)
+            navigationGroup.Position = UDim2.fromOffset(8 + searchSpan, 8)
+            navigationGroup.Size = UDim2.new(1, -64 - searchSpan, 0, 48)
             profile.AnchorPoint = Vector2.new(1, 0.5)
             profile.Position = UDim2.new(1, -10, 0.5, 0)
             dockDivider.Size = UDim2.fromOffset(1, 24)
-            dockDivider.Position = UDim2.new(1, -50, 0, 16)
+            dockDivider.Position = UDim2.new(1, -50, 0, 20)
         end
         local inset = UDim.new(0, strip and 0 or 2)
         navigationPadding.PaddingTop, navigationPadding.PaddingBottom = inset, inset
@@ -6041,8 +5964,7 @@ function Library:CreateWindow(config)
         if dockEdge == "Top" then refreshDockLayout() end
     end)
     local function setLayoutStyle(value)
-        assert(layoutEdges[value], "Layout must be Bottom bar, Top bar, Left bar, Right bar or Rail")
-        railMode = value == "Rail"
+        assert(layoutEdges[value], "Layout must be Bottom bar, Top bar, Left bar or Right bar")
         layoutStyle, dockEdge = value, layoutEdges[value]
         finishUIVisibility()
         cancelKeyCapture()
@@ -6065,19 +5987,12 @@ function Library:CreateWindow(config)
         navigationGroup.CanvasSize = UDim2.fromOffset(0, 0)
         navigationGroup.AutomaticCanvasSize = vertical and Enum.AutomaticSize.Y or Enum.AutomaticSize.X
         navigationGroup.ScrollingDirection = vertical and Enum.ScrollingDirection.Y or Enum.ScrollingDirection.X
-        logo.Parent = header
-        logo.AnchorPoint = Vector2.new(0.5, 0.5)
-        logo.Position = UDim2.new(0, 30, 0.5, 0)
-        logo.Size = UDim2.fromOffset(32, 32)
-        railDivider.Visible = false
-        content.Position = UDim2.fromOffset(12, 54)
-        content.Size = UDim2.new(1, -24, 1, -66)
         root.Size = UDim2.fromOffset(windowContentSize.X, windowContentSize.Y)
         body.Position = UDim2.fromOffset(0, 0)
         header.Position = UDim2.fromOffset(0, 0)
         body.Size = UDim2.fromScale(1, 1)
         header.Size = UDim2.new(1, 0, 0, 54)
-        dockHost.Visible = not railMode
+        dockHost.Visible = true
         refreshDockLayout()
         resize()
         setNotificationPosition(notificationPosition)
@@ -6178,7 +6093,7 @@ function Library:CreateWindow(config)
     dockReveal.MouseLeave:Connect(function() revealHover = false end)
     track(viewport:GetPropertyChangedSignal("AbsoluteSize"):Connect(refreshDockLayout))
     local function updateDockHover(mouse, now)
-        if railMode or not dockAutoHide or dockEdge == "Top" then return end
+        if not dockAutoHide or dockEdge == "Top" then return end
         local focused = UserInputService:GetFocusedTextBox()
         if focused and focused:IsDescendantOf(dockHost) then
             dockHoverUntil = now + 0.65
@@ -6195,7 +6110,7 @@ function Library:CreateWindow(config)
         local half = dockExpanded and (length / 2 + 12) or 56
         local near = math.abs(along) <= half
             and depth >= -(2 + dockScreenGap())
-            and depth <= (dockExpanded and 32 + (dockEdge == "Top" and 48 or 56) * dockFitScale or 18)
+            and depth <= (dockExpanded and 32 + (dockEdge == "Top" and 52 or 64) * dockFitScale or 18)
         if near then dockHoverUntil = now + 0.65 end
         local expanded = near or now < dockHoverUntil
         if expanded ~= dockExpanded then showDock(expanded) end
@@ -6789,7 +6704,7 @@ function Library:CreateWindow(config)
         button.Visible = visible == true
     end
     function window:SetStyle(value)
-        assert(layoutEdges[value], "Layout must be Bottom bar, Top bar, Left bar, Right bar or Rail")
+        assert(layoutEdges[value], "Layout must be Bottom bar, Top bar, Left bar or Right bar")
         applyStyle(value)
     end
     function window:GetStyle() return layoutStyle end
