@@ -659,18 +659,10 @@ function Library:CreateWindow(config)
     local dockEdge = "Bottom"
     local uiShown = true
     local windowTransitioning = false
-    local windowMotionHost = newUI("CanvasGroup")
-    windowMotionHost.Name = "WindowMotion"
-    windowMotionHost.AnchorPoint = Vector2.new(0.5, 0.5)
-    windowMotionHost.Size = UDim2.fromOffset(0, 0)
-    windowMotionHost.BackgroundTransparency = 1
-    windowMotionHost.BorderSizePixel = 0
-    windowMotionHost.ZIndex = 15
-    windowMotionHost.Visible = false
-    windowMotionHost.Parent = viewport
     local windowMotionScale = Instance.new("UIScale")
+    windowMotionScale.Name = "WindowMotionScale"
     windowMotionScale.Scale = 1
-    windowMotionScale.Parent = windowMotionHost
+    windowMotionScale.Parent = root
     local animateUIVisibility = function(visible) root.Visible = visible end
     local finishUIVisibility = function() end
     local windowContentSize = Vector2.new(584, 447)
@@ -2593,7 +2585,7 @@ function Library:CreateWindow(config)
             return detachedScale and detachedScale.Scale
                 or (
                     config.ScaleProvider and config.ScaleProvider()
-                    or scale.Scale * (windowTransitioning and windowMotionScale.Scale or 1)
+                    or scale.Scale * windowMotionScale.Scale
                 )
         end
         local function clampGroupPosition(position)
@@ -2636,9 +2628,6 @@ function Library:CreateWindow(config)
             if windowTransitioning and not detachedHost then return end
             resizeGroup(false)
         end)
-        groupTrack(windowMotionHost:GetPropertyChangedSignal("Visible"):Connect(function()
-            if not windowMotionHost.Visible and not detachedHost then resizeGroup(true) end
-        end))
         local groupScaleConnection = scale:GetPropertyChangedSignal("Scale"):Connect(function() resizeGroup(true) end)
         frame.Destroying:Connect(function() groupScaleConnection:Disconnect() end)
         function group:SetCollapsed(collapsed, immediate)
@@ -5970,9 +5959,9 @@ function Library:CreateWindow(config)
         showDock(true, true)
     end
     do
-        local home, savedPosition
-        local progress, velocity, target = 1, 0, 1
-        local minimumScale, hostPadding = 0.14, 12
+        local savedPosition
+        local motionPosition, motionScale, motionRevision = nil, nil, 0
+        local minimumScale = 0.14
         local function landingPoint()
             local inward = dockRestInward() + (dockEdge == "Top" and 24 or 28) * dockFitScale
             local size = viewport.AbsoluteSize
@@ -5981,74 +5970,56 @@ function Library:CreateWindow(config)
             if dockEdge == "Right" then return Vector2.new(size.X - inward, size.Y / 2) end
             return Vector2.new(size.X / 2, size.Y - inward)
         end
-        local function smoothstep(value)
-            value = math.clamp(value, 0, 1)
-            return value * value * (3 - 2 * value)
+        local function stopMotion()
+            if motionPosition then motionPosition:Cancel() end
+            if motionScale then motionScale:Cancel() end
+            motionPosition, motionScale = nil, nil
         end
-        local function render()
-            local clamped = math.clamp(progress, 0, 1)
-            local travel = 1 - (1 - clamped) ^ 3
-            local point = landingPoint():Lerp(home, travel)
-            local size = Vector2.new(root.Size.X.Offset, root.Size.Y.Offset) * scale.Scale
-            windowMotionHost.Size = UDim2.fromOffset(size.X + hostPadding * 2, size.Y + hostPadding * 2)
-            windowMotionHost.Position = UDim2.fromOffset(point.X, point.Y)
-            windowMotionScale.Scale = math.max(0.01, minimumScale + (1 - minimumScale) * progress)
-            setGroupTransparency(windowMotionHost, 1 - smoothstep(clamped / 0.6))
+        local function settle()
+            stopMotion()
+            motionRevision = motionRevision + 1
+            if savedPosition then root.Position = savedPosition end
+            windowMotionScale.Scale = 1
+            root.Visible = uiShown
+            windowTransitioning = false
+            savedPosition = nil
+            resize()
         end
         finishUIVisibility = function()
-            if windowTransitioning then
-                if not uiShown then root.Visible = false end
-                root.Parent = viewport
-                root.Position = savedPosition
-                windowMotionScale.Scale = 1
-                setGroupTransparency(windowMotionHost, 0)
-                windowMotionHost.Visible = false
-                windowTransitioning = false
-                home, savedPosition = nil, nil
-            end
-            progress, velocity, target = uiShown and 1 or 0, 0, uiShown and 1 or 0
+            if windowTransitioning then settle() end
             root.Visible = uiShown
             resize()
         end
         animateUIVisibility = function(visible)
+            stopMotion()
             if not windowTransitioning then
                 savedPosition = root.Position
-                home = Vector2.new(
-                    root.Position.X.Scale * viewport.AbsoluteSize.X + root.Position.X.Offset,
-                    root.Position.Y.Scale * viewport.AbsoluteSize.Y + root.Position.Y.Offset
-                )
-                progress, velocity = visible and 0 or 1, 0
                 windowTransitioning = true
-                root.Parent = windowMotionHost
-                root.Position = UDim2.fromScale(0.5, 0.5)
-                windowMotionHost.Visible = true
+                root.Visible = true
+                if visible then
+                    local point = landingPoint()
+                    root.Position = UDim2.fromOffset(point.X, point.Y)
+                    windowMotionScale.Scale = minimumScale
+                end
             end
-            target = visible and 1 or 0
-            root.Visible = true
+            local point = landingPoint()
+            local duration = visible and 0.22 or 0.16
+            motionRevision = motionRevision + 1
+            local revision = motionRevision
+            motionPosition = TweenService:Create(root, tweenInfo(duration), {
+                Position = visible and savedPosition or UDim2.fromOffset(point.X, point.Y),
+            })
+            motionScale = TweenService:Create(windowMotionScale, tweenInfo(duration), {
+                Scale = visible and 1 or minimumScale,
+            })
+            motionPosition:Play()
+            motionScale:Play()
+            task.delay(duration, function()
+                if revision == motionRevision and uiAlive then settle() end
+            end)
             dockHoverUntil = os.clock() + 1.2
             showDock(true)
-            render()
         end
-        track(RunService.RenderStepped:Connect(function(dt)
-            if not windowTransitioning then return end
-            dt = math.min(dt, 1 / 30)
-            local omega, damping = 17, 0.72
-            if target == 0 then omega, damping = 22, 0.95 end
-            local frequency = omega * math.sqrt(1 - damping * damping)
-            local offset = progress - target
-            local coefficient = (velocity + damping * omega * offset) / frequency
-            local decay = math.exp(-damping * omega * dt)
-            local cosine, sine = math.cos(frequency * dt), math.sin(frequency * dt)
-            local wave = offset * cosine + coefficient * sine
-            progress = target + decay * wave
-            velocity = decay * (-damping * omega * wave + frequency * (-offset * sine + coefficient * cosine))
-            local settled = math.abs(progress - target) < 0.002 and math.abs(velocity) < 0.02
-            if settled or (target == 0 and progress < 0.015) then
-                finishUIVisibility()
-                return
-            end
-            render()
-        end))
         track(viewport:GetPropertyChangedSignal("AbsoluteSize"):Connect(finishUIVisibility))
     end
     local function setDockAutoHide(value)
