@@ -7,7 +7,7 @@ local SaveManager = loadstring(game:HttpGet(repo .. "SaveManager.lua"))()
 local Window = Library:CreateWindow({
     Title = "Viz",
     Size = Vector2.new(640, 460),
-    Layout = "Bottom bar", -- "Bottom bar", "Top bar", "Left bar" or "Right bar"
+    Layout = "Bottom bar", -- "Bottom bar", "Top bar", "Left bar", "Right bar" or "Rail"
     MenuKey = Enum.KeyCode.RightShift,
     -- ToggleButton = true, -- floating show/hide button; on by default on touch devices
 })
