@@ -5674,7 +5674,7 @@ function Library:CreateWindow(config)
                     dockSearch.BackgroundTransparency = (hovering or box:IsFocused()) and 0.65 or 1
                     glyph.Position = UDim2.fromOffset(12, 12)
                     local stripWidth = sidebar.Size.X.Offset
-                    card.Size = UDim2.fromOffset(math.max(236, stripWidth), 48)
+                    card.Size = UDim2.fromOffset(math.max(220, stripWidth), 48)
                     card.AnchorPoint = Vector2.new(0.5, 1)
                     local centre = 6 - stripWidth / 2
                     rest, away = UDim2.new(1, centre, 0, -24), UDim2.new(1, centre, 0, -16)
@@ -5698,8 +5698,8 @@ function Library:CreateWindow(config)
                     glyph.Position = UDim2.fromOffset(14, 14)
                     card.Size = UDim2.fromOffset(236, 48)
                     card.AnchorPoint = Vector2.new(right and 1 or 0, 0.5)
-                    rest = UDim2.new(right and 0 or 1, right and -20 or 20, 0.5, 0)
-                    away = UDim2.new(right and 0 or 1, right and -12 or 12, 0.5, 0)
+                    rest = UDim2.new(right and 0 or 1, right and -22 or 22, 0.5, 0)
+                    away = UDim2.new(right and 0 or 1, right and -14 or 14, 0.5, 0)
                 end
                 box.Parent = card
                 box.Position = UDim2.fromOffset(0, 0)
