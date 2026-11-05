@@ -5684,10 +5684,12 @@ function Library:CreateWindow(config)
                     dockSearch.Size = UDim2.fromOffset(44, 44)
                     dockSearch.BackgroundTransparency = (hovering or box:IsFocused()) and 0.65 or 1
                     glyph.Position = UDim2.fromOffset(14, 14)
-                    card.Size = UDim2.fromOffset(236, 48)
+                    local dockWidth = sidebar.Parent and sidebar.Parent.Size.X.Offset or 220
+                    local cardWidth = math.max(220, dockWidth)
+                    card.Size = UDim2.fromOffset(cardWidth, 48)
                     card.AnchorPoint = Vector2.new(0.5, 1)
-                    local centre = sidebar.Parent.Size.X.Offset / 2 - 8
-                    rest, away = UDim2.fromOffset(centre, -16), UDim2.fromOffset(centre, -8)
+                    local centre = dockWidth / 2 - 8
+                    rest, away = UDim2.fromOffset(centre, -22), UDim2.fromOffset(centre, -14)
                 else
                     dockSearch.AnchorPoint = Vector2.new(0.5, 0)
                     dockSearch.Position = UDim2.new(0.5, 0, 0, 8)
