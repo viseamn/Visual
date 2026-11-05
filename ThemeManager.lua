@@ -192,7 +192,7 @@ local function newManager()
         self.ImageControl = theme:AddTextbox({
             Name = "Background",
             Default = context.Theme.BackgroundImage or "",
-            Placeholder = "Image asset ID",
+            Placeholder = "rbxassetid://0",
             NoSave = true,
             Callback = function(value)
                 local ok, err = self:ApplyThemeData({ BackgroundImage = value:match("^%s*(.-)%s*$") })
@@ -202,8 +202,9 @@ local function newManager()
                 end
             end,
         })
+        theme:AddDivider()
         theme:AddButton({
-            Name = "Reset theme",
+            Name = "Reset to default",
             Callback = function()
                 showDialog({
                     Title = "Reset theme",
@@ -238,6 +239,7 @@ local function newManager()
                 ratio
             )
         )
+        saved:AddDivider("Save as")
         local nameBox = saved:AddTextbox({ Name = "Name", Placeholder = "My theme", NoSave = true })
         local function refreshList()
             local values, err = names()

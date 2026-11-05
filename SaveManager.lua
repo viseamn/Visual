@@ -387,6 +387,7 @@ local function newManager()
             if err then report("Configs", false, err) end
             return names, err
         end
+        files:AddDivider("Saved configs")
         local selector = files:AddDropdown({ Name = "Config", Options = configNames(), NoSave = true })
         local autoloadToggle
         local refreshing = false
@@ -453,7 +454,8 @@ local function newManager()
                 },
             },
         })
-        local nameBox = files:AddTextbox({ Name = "New config", Placeholder = "Name, then Enter", NoSave = true })
+        local newConfigDivider = files:AddDivider("New config")
+        local nameBox = files:AddTextbox({ Name = "Name", Placeholder = "Type a name, then Enter", NoSave = true })
         nameBox.FocusLost:Connect(function(enterPressed)
             local name = nameBox.Text:match("^%s*(.-)%s*$")
             if not enterPressed or name == "" then return end
@@ -464,6 +466,7 @@ local function newManager()
             end
             report("Create config", ok, err)
         end)
+        files:AddDivider("Startup")
         local autoSaveToggle = files:AddToggle({
             Name = "Auto save",
             Default = self.AutoSave,
@@ -508,6 +511,8 @@ local function newManager()
             autoSaveToggle:Set(enabled, true)
             saveButton.Visible = not enabled
             arrange(enabled and { loadButton, deleteButton } or { loadButton, saveButton, deleteButton })
+            newConfigDivider:SetAttribute("UserVisible", not enabled)
+            newConfigDivider.Visible = not enabled
             group:SetControlVisible(nameBox, not enabled)
             refresh(self.ActiveConfig)
         end
@@ -523,12 +528,26 @@ local function newManager()
         pendingAutoSave = not self.AutoSave and savedAutoSave(self) or nil
         applyAutoSaveState(self.AutoSave or pendingAutoSave == true)
 
+        transfer:AddLabel("Paste a config below and press Import, or press Export to copy the current setup.")
         local jsonBox = transfer:AddTextbox({
             Name = "Config JSON",
-            Placeholder = "Paste a config here",
+            Placeholder = "Paste a config JSON here",
             NoSave = true,
             MultiLine = true,
         })
+        local jsonStatus = transfer:AddLabel("Nothing pasted yet.")
+        local function describeJSON(text)
+            if text:match("^%s*$") then return "Nothing pasted yet." end
+            local ok, data = pcall(function() return HttpService:JSONDecode(text) end)
+            if not ok or type(data) ~= "table" then return "Not valid JSON." end
+            if data.Version ~= 1 or type(data.Controls) ~= "table" then
+                return "Valid JSON, but not a Viz config."
+            end
+            return "Valid config, ready to import."
+        end
+        jsonBox:GetPropertyChangedSignal("Text"):Connect(function()
+            jsonStatus.Text = describeJSON(jsonBox.Text)
+        end)
         transfer:AddButton({
             Name = "Import",
             Callback = function()
@@ -549,6 +568,10 @@ local function newManager()
                         local copied = type(setclipboard) == "function" and pcall(setclipboard, content)
                         notify({ Title = "Export config", Content = copied and "Copied to clipboard" or "Ready above" })
                     end,
+                },
+                {
+                    Name = "Clear",
+                    Callback = function() jsonBox.Text = "" end,
                 },
             },
         })
