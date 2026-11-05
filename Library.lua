@@ -318,11 +318,9 @@ local shortKeyNames = {
 }
 local toastGlowSpread = 16
 local notificationAnchors = {
-    TopLeft = Vector2.new(0, 0),
     Top = Vector2.new(0.5, 0),
     TopRight = Vector2.new(1, 0),
     BottomLeft = Vector2.new(0, 1),
-    Bottom = Vector2.new(0.5, 1),
     BottomRight = Vector2.new(1, 1),
 }
 local modifierKeys = {
@@ -1414,13 +1412,11 @@ function Library:CreateWindow(config)
     end
     local function setNotificationPosition(position)
         local anchor = notificationAnchors[position]
-        assert(anchor, "Notification position must be TopLeft, Top, TopRight, BottomLeft, Bottom or BottomRight")
+        assert(anchor, "Notification position must be Top, TopRight, BottomLeft or BottomRight")
         notificationPosition = position
-        local lift = 0
-        if position == "Bottom" and dockEdge == "Bottom" then lift = -78 end
         toastStack.AnchorPoint = anchor
-        toastStack.Position = UDim2.new(anchor.X, 0, anchor.Y, lift)
-        toastStack.Size = UDim2.new(1, 0, 1, -math.abs(lift))
+        toastStack.Position = UDim2.new(anchor.X, 0, anchor.Y, 0)
+        toastStack.Size = UDim2.new(1, 0, 1, 0)
         toastLayout.HorizontalAlignment = anchor.X == 0 and Enum.HorizontalAlignment.Left
             or anchor.X == 1 and Enum.HorizontalAlignment.Right
             or Enum.HorizontalAlignment.Center
@@ -6725,7 +6721,7 @@ function Library:CreateWindow(config)
         self.MenuKeybind = menuKeybind
         notificationPositionControl = group:AddDropdown({
             Name = "Notifications",
-            Options = { "TopLeft", "Top", "TopRight", "BottomLeft", "Bottom", "BottomRight" },
+            Options = { "Top", "TopRight", "BottomLeft", "BottomRight" },
             Default = notificationPosition,
             NoSave = true,
             Callback = function(value)
