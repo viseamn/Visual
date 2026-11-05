@@ -5633,19 +5633,6 @@ function Library:CreateWindow(config)
         end
         refreshKeybindMenu()
     end
-    local profile = rounded("ImageLabel", "Profile", sidebar, 0, 0, 32, 32, "Search", 16)
-    profile.AnchorPoint = Vector2.new(1, 0.5)
-    profile.Position = UDim2.new(1, -10, 0.5, 0)
-    profile.ClipsDescendants = true
-    local profileRim = Instance.new("UIStroke")
-    bindTheme(profileRim, "Color", "Text")
-    profileRim.Transparency = 0.88
-    profileRim.Thickness = 1
-    profileRim.Parent = profile
-    task.spawn(function()
-        local ok, thumbnail = playerThumbnail(Players, player.UserId)
-        if ok and profile.Parent then profile.Image = thumbnail end
-    end)
     local dockSearch = rounded("TextButton", "DockSearch", sidebar, 8, 8, 40, 40, "Search", 12)
     local layoutDockSearch
     do
@@ -5820,9 +5807,6 @@ function Library:CreateWindow(config)
     dockRim.Transparency = 0.92
     dockRim.Thickness = 1
     dockRim.Parent = dockGlass
-    local dockDivider = rounded("Frame", "ProfileDivider", dockGlass, 0, 16, 1, 24, "Text", 1)
-    dockDivider.Position = UDim2.new(1, -50, 0, 16)
-    dockDivider.BackgroundTransparency = 0.92
     local dockReveal = rounded("TextButton", "RevealBottomBar", viewport, 0, 0, 104, 20, "Background", 6)
     dockReveal.BackgroundTransparency = 1
     dockReveal.AnchorPoint = Vector2.new(0.5, 1)
@@ -5905,10 +5889,10 @@ function Library:CreateWindow(config)
         end
         local vertical = dockVertical()
         local thickness = strip and 52 or 64
-        local searchSpan = searchStyle ~= "Bar" and 0 or (strip and 46 or 52)
+        local searchSpan = searchStyle ~= "Bar" and 0 or (strip and 46 or 56)
         local available = vertical and viewport.AbsoluteSize.Y or viewport.AbsoluteSize.X
         local length = strip and (6 + tabSpan + searchSpan)
-            or math.min(68 + searchSpan + #tabs * 50, math.max(116 + searchSpan, available - 24))
+            or math.min(14 + searchSpan + tabSpan, math.max(72 + searchSpan, available - 24))
         local headerSearch = strip and searchStyle == "Header"
         if strip then
             local room = root.Size.X.Offset - (headerSearch and 60 + 242 or 120)
@@ -5925,8 +5909,6 @@ function Library:CreateWindow(config)
         header.ZIndex = strip and 3 or 1
         searchField.Position = strip and UDim2.new(1, -234, 0, 13) or UDim2.fromOffset(66, 13)
         dockHost.Size = vertical and UDim2.fromOffset(thickness, length) or UDim2.fromOffset(length, thickness)
-        profile.Visible = not strip
-        dockDivider.Visible = not strip
         dockFitScale = math.min(root:GetAttribute("DPIScale") or 1, math.max(0.1, (available - 24) / length))
         local revealLength, revealDepth = 104, 20
         if UserInputService.TouchEnabled then revealLength, revealDepth = 180, 44 end
@@ -5940,19 +5922,11 @@ function Library:CreateWindow(config)
             navigationGroup.Position = UDim2.fromOffset(6, 6)
             navigationGroup.Size = UDim2.new(1, -12 - searchSpan, 0, 40)
         elseif vertical then
-            navigationGroup.Position = UDim2.fromOffset(6, 8 + searchSpan)
-            navigationGroup.Size = UDim2.new(0, 48, 1, -68 - searchSpan)
-            profile.AnchorPoint = Vector2.new(0.5, 1)
-            profile.Position = UDim2.new(0.5, 0, 1, -10)
-            dockDivider.Size = UDim2.fromOffset(24, 1)
-            dockDivider.Position = UDim2.new(0, 16, 1, -50)
+            navigationGroup.Position = UDim2.fromOffset(8, 8 + searchSpan)
+            navigationGroup.Size = UDim2.new(0, 48, 1, -16 - searchSpan)
         else
             navigationGroup.Position = UDim2.fromOffset(8 + searchSpan, 8)
-            navigationGroup.Size = UDim2.new(1, -64 - searchSpan, 0, 48)
-            profile.AnchorPoint = Vector2.new(1, 0.5)
-            profile.Position = UDim2.new(1, -10, 0.5, 0)
-            dockDivider.Size = UDim2.fromOffset(1, 24)
-            dockDivider.Position = UDim2.new(1, -50, 0, 20)
+            navigationGroup.Size = UDim2.new(1, -16 - searchSpan, 0, 48)
         end
         local inset = UDim.new(0, strip and 0 or 2)
         navigationPadding.PaddingTop, navigationPadding.PaddingBottom = inset, inset
@@ -6569,7 +6543,6 @@ function Library:CreateWindow(config)
         Navigation = navigation,
         NavigationBar = dockHost,
         BottomBar = dockHost,
-        Profile = profile,
         KeybindMenu = keybindMenu,
         KeybindFrame = keybindMenu.Frame,
         MenuKeybind = menuKeybind,
