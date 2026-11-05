@@ -2986,8 +2986,8 @@ function Library:CreateWindow(config)
         end
         function group:AddDivider(options)
             options = type(options) == "string" and { Text = options } or (options or {})
-            local container = row("Divider", options.Text and 30 or 13)
-            local line = rounded("Frame", "Line", container, 0, 6, 0, 1, "Border", 0)
+            local container = row("Divider", options.Text and 30 or 24)
+            local line = rounded("Frame", "Line", container, 0, 12, 0, 1, "Border", 0)
             line.Size = UDim2.new(1, 0, 0, 1)
             if options.Text then
                 line.Position = UDim2.fromOffset(0, 24)
