@@ -260,7 +260,9 @@ local Window = Library:CreateWindow({
 
 `Layout` accepts `"Bottom bar"`, `"Top bar"`, `"Left bar"`, `"Right bar"` or `"Rail"`. `SearchStyle` accepts `"Bar"` or `"Header"`.
 
-The four bar layouts dock a floating pill on a screen edge. `"Rail"` is the exception: a 52px icon column drawn inside the window along its left edge, with the logo at the top, tabs below it, and the search button and profile above the bottom. Nothing floats outside the window, so it never collides with the game HUD. The rail takes its width out of the window body, not out of `Size`.
+The four bar layouts dock a floating pill on a screen edge. `"Rail"` is the exception: a 64px icon column drawn inside the window along its left edge, with the logo at the top, tabs below it, and the search button and profile above the bottom. Nothing floats outside the window, so it never collides with the game HUD. The rail takes its width out of the window body, not out of `Size`.
+
+In a rail layout the header collapses when `SearchStyle` is `"Bar"`, because the rail already carries the search button. Set `SearchStyle = "Header"` to keep a 54px header and put the search field there.
 
 <details>
 <summary><b>Window methods</b></summary>
