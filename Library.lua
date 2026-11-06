@@ -5680,9 +5680,10 @@ function Library:CreateWindow(config)
         boxPadding.Parent = box
         local hovering = false
         local function refresh()
-            local active = box:IsFocused()
-            tween(dockSearch, { BackgroundColor3 = (hovering or active) and "Hover" or "Search" }, 0.16)
-            motion(dockSearch, { BackgroundTransparency = (hovering or active) and 0.65 or 1 }, 0.16)
+            local active = box:IsFocused() and not expanded
+            local lit = not expanded and (hovering or active)
+            tween(dockSearch, { BackgroundColor3 = lit and "Hover" or "Search" }, 0.16)
+            motion(dockSearch, { BackgroundTransparency = lit and 0.65 or 1 }, 0.16)
             tween(rim, { Color = active and "Accent" or "Text" }, 0.16)
             motion(rim, { Transparency = active and 0.8 or 1 }, 0.16)
             tween(glyph, { ImageColor3 = (active or box.Text ~= "") and "Accent" or "Muted" }, 0.16)
@@ -5740,12 +5741,14 @@ function Library:CreateWindow(config)
                     if restSize then
                         dockSearch.BackgroundTransparency = 1
                         rim.Transparency = 1
+                        glyph.ImageTransparency = 1
                     end
                     local properties = { GroupTransparency = 0, Position = rest }
                     if restSize then properties.Size = restSize end
                     tween(card, properties, animate and 0.18 or 0)
                     motion(cardRim, { Transparency = 0.78 }, animate and 0.18 or 0)
                 elseif card.Visible then
+                    if awaySize then glyph.ImageTransparency = 0 end
                     local properties = { GroupTransparency = 1, Position = away }
                     if awaySize then properties.Size = awaySize end
                     tween(card, properties, animate and 0.14 or 0)
