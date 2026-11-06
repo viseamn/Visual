@@ -662,24 +662,12 @@ function Library:CreateWindow(config)
     local menuHeld = false
     local windowTransitioning = false
     local mouseUnlock = config.UnlockMouse ~= false
-    local savedMouseBehavior, savedMouseIcon
-    local function restoreMouse()
-        if savedMouseBehavior == nil then return end
-        UserInputService.MouseBehavior = savedMouseBehavior
-        UserInputService.MouseIconEnabled = savedMouseIcon
-        savedMouseBehavior, savedMouseIcon = nil, nil
-    end
+    local mouseHeld = false
     local function applyMouseUnlock()
-        if mouseUnlock and uiShown and not menuHeld then
-            if savedMouseBehavior == nil then
-                savedMouseBehavior = UserInputService.MouseBehavior
-                savedMouseIcon = UserInputService.MouseIconEnabled
-            end
-            UserInputService.MouseBehavior = Enum.MouseBehavior.Default
-            UserInputService.MouseIconEnabled = true
-        else
-            restoreMouse()
-        end
+        mouseHeld = mouseUnlock and uiShown and not menuHeld
+        if not mouseUnlock then return end
+        UserInputService.MouseBehavior = Enum.MouseBehavior.Default
+        UserInputService.MouseIconEnabled = true
     end
     local windowMotionScale = Instance.new("UIScale")
     windowMotionScale.Name = "WindowMotionScale"
@@ -840,7 +828,8 @@ function Library:CreateWindow(config)
     end
     track(RunService.RenderStepped:Connect(stepGlows))
     track(RunService.RenderStepped:Connect(function()
-        if savedMouseBehavior == nil then return end
+        if not mouseHeld then return end
+        if UserInputService:IsMouseButtonPressed(Enum.UserInputType.MouseButton2) then return end
         if UserInputService.MouseBehavior ~= Enum.MouseBehavior.Default then
             UserInputService.MouseBehavior = Enum.MouseBehavior.Default
         end
@@ -1789,7 +1778,7 @@ function Library:CreateWindow(config)
     local function beginUIDestroy()
         if not uiAlive then return end
         uiAlive = false
-        restoreMouse()
+        mouseHeld = false
         capturingKeybind = nil
         releaseHolds(false, true)
         keybindControls = {}
@@ -5719,8 +5708,8 @@ function Library:CreateWindow(config)
                     glyph.Position = UDim2.fromOffset(14, 14)
                     local dockWidth = sidebar.Parent and sidebar.Parent.Size.X.Offset or 220
                     card.AnchorPoint = Vector2.new(0, 0.5)
-                    rest, away = UDim2.new(0, -8, 0.5, 0), UDim2.new(0, 0, 0.5, 0)
-                    restSize = UDim2.fromOffset(dockWidth, 48)
+                    rest, away = UDim2.new(0, 0, 0.5, 0), UDim2.new(0, 0, 0.5, 0)
+                    restSize = UDim2.fromOffset(math.max(88, dockWidth - 16), 44)
                     awaySize = UDim2.fromOffset(44, 44)
                 else
                     dockSearch.AnchorPoint = Vector2.new(0.5, 0)
@@ -5745,7 +5734,11 @@ function Library:CreateWindow(config)
                         if awaySize then card.Size = awaySize end
                     end
                     card.Visible = true
-                    if restSize then navigationGroup.Visible = false end
+                    if restSize then
+                        navigationGroup.Visible = false
+                        dockSearch.BackgroundTransparency = 1
+                        rim.Transparency = 1
+                    end
                     local properties = { GroupTransparency = 0, Position = rest }
                     if restSize then properties.Size = restSize end
                     tween(card, properties, animate and 0.18 or 0)
