@@ -658,6 +658,7 @@ function Library:CreateWindow(config)
     local searchStyle = "Bar"
     local dockEdge = "Bottom"
     local uiShown = true
+    local menuHeld = false
     local windowTransitioning = false
     local windowMotionScale = Instance.new("UIScale")
     windowMotionScale.Name = "WindowMotionScale"
@@ -5842,12 +5843,12 @@ function Library:CreateWindow(config)
         local progress = math.clamp(dockProgress, 0, 1)
         local hiddenDepth = 12 + (dockEdge == "Top" and 52 or 64) * dockFitScale + dockScreenGap()
         placeAtEdge(dockHost, (dockRestInward() + hiddenDepth) * dockProgress - hiddenDepth)
-        dockHost.Visible = dockEdge ~= "Top" and (dockProgress > 0.002 or dockExpanded)
+        dockHost.Visible = not menuHeld and dockEdge ~= "Top" and (dockProgress > 0.002 or dockExpanded)
         dockScale.Scale = dockFitScale * (0.94 + 0.06 * dockProgress)
         dockGlass.BackgroundTransparency = (0.08 + (1 - progress) * 0.22) * glassOpacityFactor
         dockRim.Transparency = 0.92 + (1 - progress) * 0.08
         local reveal = dockAutoHide and dockEdge ~= "Top" and (1 - progress) or 0
-        dockReveal.Visible = reveal > 0.005
+        dockReveal.Visible = not menuHeld and reveal > 0.005
         dockReveal.Interactable = not dockExpanded and reveal > 0.2
         placeAtEdge(dockReveal, 2 - dockScreenGap() - 6 * progress)
         local gripLength = (80 + 8 * revealHoverAmount) * (0.86 + 0.14 * reveal)
@@ -5876,7 +5877,7 @@ function Library:CreateWindow(config)
         end
         local vertical = dockVertical()
         local thickness = strip and 52 or 64
-        local searchSpan = searchStyle ~= "Bar" and 0 or (strip and 46 or 56)
+        local searchSpan = searchStyle ~= "Bar" and 0 or (strip and 46 or 48)
         local available = vertical and viewport.AbsoluteSize.Y or viewport.AbsoluteSize.X
         local length = strip and (6 + tabSpan + searchSpan)
             or math.min(14 + searchSpan + tabSpan, math.max(72 + searchSpan, available - 24))
@@ -5982,14 +5983,14 @@ function Library:CreateWindow(config)
             motionRevision = motionRevision + 1
             if savedPosition then root.Position = savedPosition end
             windowMotionScale.Scale = 1
-            root.Visible = uiShown
+            root.Visible = uiShown and not menuHeld
             windowTransitioning = false
             savedPosition = nil
             resize()
         end
         finishUIVisibility = function()
             if windowTransitioning then settle() end
-            root.Visible = uiShown
+            root.Visible = uiShown and not menuHeld
             resize()
         end
         animateUIVisibility = function(visible)
@@ -6024,6 +6025,23 @@ function Library:CreateWindow(config)
         end
         track(viewport:GetPropertyChangedSignal("AbsoluteSize"):Connect(finishUIVisibility))
     end
+    local function syncMenuHold()
+        if windowTransitioning then return end
+        if menuHeld then
+            closeDropdown(true)
+            cancelKeyCapture()
+        end
+        root.Visible = uiShown and not menuHeld
+        renderDock()
+    end
+    track(GuiService.MenuOpened:Connect(function()
+        menuHeld = true
+        syncMenuHold()
+    end))
+    track(GuiService.MenuClosed:Connect(function()
+        menuHeld = false
+        syncMenuHold()
+    end))
     local function setDockAutoHide(value)
         dockAutoHide = value == true
         showDock(not dockAutoHide)
