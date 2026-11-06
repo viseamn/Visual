@@ -658,6 +658,7 @@ function Library:CreateWindow(config)
     local layoutStyle = "Bottom bar"
     local searchStyle = "Bar"
     local dockEdge = "Bottom"
+    local searchFieldWidth = 200
     local uiShown = true
     local menuHeld = false
     local windowTransitioning = false
@@ -5642,6 +5643,8 @@ function Library:CreateWindow(config)
     end
     local dockSearch = rounded("TextButton", "DockSearch", sidebar, 8, 8, 40, 40, "Search", 12)
     local layoutDockSearch
+    local setSearchExpanded
+    local expanded = false
     do
         dockSearch.BackgroundTransparency = 1
         local rim = Instance.new("UIStroke")
@@ -5660,7 +5663,7 @@ function Library:CreateWindow(config)
         cardRim.Transparency = 1
         glassSurface(card, 0.12, cardRim)
         icon(card, "search", 16, 16, 16, "Accent")
-        local expanded, cardRevision = false, 0
+        local cardRevision = 0
         local box = rounded("TextBox", "Box", card, 0, 0, 0, 48, "Search", 0)
         box.Size = UDim2.fromScale(1, 1)
         box.BackgroundTransparency = 1
@@ -5709,7 +5712,7 @@ function Library:CreateWindow(config)
                     local dockWidth = sidebar.Parent and sidebar.Parent.Size.X.Offset or 220
                     card.AnchorPoint = Vector2.new(0, 0.5)
                     rest, away = UDim2.new(0, 0, 0.5, 0), UDim2.new(0, 0, 0.5, 0)
-                    restSize = UDim2.fromOffset(math.max(88, dockWidth - 16), 44)
+                    restSize = UDim2.fromOffset(math.min(searchFieldWidth, math.max(88, dockWidth - 16)), 44)
                     awaySize = UDim2.fromOffset(44, 44)
                 else
                     dockSearch.AnchorPoint = Vector2.new(0.5, 0)
@@ -5735,7 +5738,6 @@ function Library:CreateWindow(config)
                     end
                     card.Visible = true
                     if restSize then
-                        navigationGroup.Visible = false
                         dockSearch.BackgroundTransparency = 1
                         rim.Transparency = 1
                     end
@@ -5749,13 +5751,8 @@ function Library:CreateWindow(config)
                     tween(card, properties, animate and 0.14 or 0)
                     motion(cardRim, { Transparency = 1 }, animate and 0.14 or 0)
                     task.delay(animate and 0.15 or 0, function()
-                        if cardRevision == revision and not expanded then
-                            card.Visible = false
-                            if awaySize then navigationGroup.Visible = true end
-                        end
+                        if cardRevision == revision and not expanded then card.Visible = false end
                     end)
-                elseif awaySize then
-                    navigationGroup.Visible = true
                 end
             end
         end
@@ -5778,22 +5775,19 @@ function Library:CreateWindow(config)
         end)
         box.FocusLost:Connect(function(enterPressed)
             if expanded and (enterPressed or not hovering) then
-                expanded = false
-                layoutDockSearch(true)
+                setSearchExpanded(false)
             end
             refresh()
         end)
         dockSearch.Activated:Connect(function()
             if dialogOpen then return end
             if expanded then
-                expanded = false
                 box:ReleaseFocus()
-                layoutDockSearch(true)
+                setSearchExpanded(false)
                 return
             end
             if not uiShown then setUIVisible(true) end
-            expanded = true
-            layoutDockSearch(true)
+            setSearchExpanded(true)
             task.defer(function()
                 if uiAlive and expanded then box:CaptureFocus() end
             end)
@@ -5915,6 +5909,9 @@ function Library:CreateWindow(config)
         local vertical = dockVertical()
         local thickness = strip and 52 or 64
         local searchSpan = searchStyle ~= "Bar" and 0 or (strip and 46 or 48)
+        if expanded and not strip and searchStyle == "Bar" then
+            searchSpan = searchSpan + searchFieldWidth - 44
+        end
         local available = vertical and viewport.AbsoluteSize.Y or viewport.AbsoluteSize.X
         local length = strip and (6 + tabSpan + searchSpan)
             or math.min(14 + searchSpan + tabSpan, math.max(72 + searchSpan, available - 24))
@@ -5959,12 +5956,28 @@ function Library:CreateWindow(config)
         navigationLayout.Padding = UDim.new(0, 6)
         if activeTab then selectTab(activeTab, true) end
     end
+    setSearchExpanded = function(value)
+        value = value == true
+        if expanded == value then return end
+        expanded = value
+        if dockEdge ~= "Bottom" or searchStyle ~= "Bar" then
+            layoutDockSearch(true)
+            return
+        end
+        local oldSize, oldPosition = dockHost.Size, navigationGroup.Position
+        refreshDockLayout()
+        local newSize, newPosition = dockHost.Size, navigationGroup.Position
+        dockHost.Size, navigationGroup.Position = oldSize, oldPosition
+        tween(dockHost, { Size = newSize }, 0.18)
+        tween(navigationGroup, { Position = newPosition }, 0.18)
+    end
     root:GetPropertyChangedSignal("Size"):Connect(function()
         if dockEdge == "Top" then refreshDockLayout() end
     end)
     local function setLayoutStyle(value)
         assert(layoutEdges[value], "Layout must be Bottom bar, Top bar, Left bar or Right bar")
         layoutStyle, dockEdge = value, layoutEdges[value]
+        expanded = false
         finishUIVisibility()
         cancelKeyCapture()
         closeDropdown(true)
@@ -6489,6 +6502,7 @@ function Library:CreateWindow(config)
     end
     local function applySearchStyle(value)
         searchStyle = value == "Header" and "Header" or "Bar"
+        expanded = false
         local focused = UserInputService:GetFocusedTextBox()
         if focused and (focused == globalSearch or focused:IsDescendantOf(dockSearch)) then focused:ReleaseFocus() end
         searchField.Visible = searchStyle == "Header"
