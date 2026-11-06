@@ -5699,7 +5699,7 @@ function Library:CreateWindow(config)
             rim.Enabled = dockEdge ~= "Top"
             do
                 local right = dockEdge == "Right"
-                local rest, away
+                local rest, away, restSize, awaySize
                 if dockEdge == "Top" then
                     dockSearch.AnchorPoint = Vector2.new(1, 0.5)
                     dockSearch.Position = UDim2.new(1, -6, 0.5, 0)
@@ -5718,11 +5718,10 @@ function Library:CreateWindow(config)
                     dockSearch.BackgroundTransparency = (hovering or box:IsFocused()) and 0.65 or 1
                     glyph.Position = UDim2.fromOffset(14, 14)
                     local dockWidth = sidebar.Parent and sidebar.Parent.Size.X.Offset or 220
-                    local cardWidth = math.max(220, dockWidth)
-                    card.Size = UDim2.fromOffset(cardWidth, 48)
-                    card.AnchorPoint = Vector2.new(0.5, 1)
-                    local centre = dockWidth / 2 - 8
-                    rest, away = UDim2.fromOffset(centre, -22), UDim2.fromOffset(centre, -14)
+                    card.AnchorPoint = Vector2.new(0, 0.5)
+                    rest, away = UDim2.new(0, -8, 0.5, 0), UDim2.new(0, 0, 0.5, 0)
+                    restSize = UDim2.fromOffset(dockWidth, 48)
+                    awaySize = UDim2.fromOffset(44, 44)
                 else
                     dockSearch.AnchorPoint = Vector2.new(0.5, 0)
                     dockSearch.Position = UDim2.new(0.5, 0, 0, 8)
@@ -5741,16 +5740,29 @@ function Library:CreateWindow(config)
                 cardRevision = cardRevision + 1
                 local revision = cardRevision
                 if expanded then
-                    if not card.Visible then card.Position = away end
+                    if not card.Visible then
+                        card.Position = away
+                        if awaySize then card.Size = awaySize end
+                    end
                     card.Visible = true
-                    tween(card, { GroupTransparency = 0, Position = rest }, animate and 0.18 or 0)
+                    if restSize then navigationGroup.Visible = false end
+                    local properties = { GroupTransparency = 0, Position = rest }
+                    if restSize then properties.Size = restSize end
+                    tween(card, properties, animate and 0.18 or 0)
                     motion(cardRim, { Transparency = 0.78 }, animate and 0.18 or 0)
                 elseif card.Visible then
-                    tween(card, { GroupTransparency = 1, Position = away }, animate and 0.14 or 0)
+                    local properties = { GroupTransparency = 1, Position = away }
+                    if awaySize then properties.Size = awaySize end
+                    tween(card, properties, animate and 0.14 or 0)
                     motion(cardRim, { Transparency = 1 }, animate and 0.14 or 0)
                     task.delay(animate and 0.15 or 0, function()
-                        if cardRevision == revision and not expanded then card.Visible = false end
+                        if cardRevision == revision and not expanded then
+                            card.Visible = false
+                            if awaySize then navigationGroup.Visible = true end
+                        end
                     end)
+                elseif awaySize then
+                    navigationGroup.Visible = true
                 end
             end
         end
