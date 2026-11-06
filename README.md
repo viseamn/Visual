@@ -260,6 +260,8 @@ local Window = Library:CreateWindow({
 
 `Layout` accepts `"Bottom bar"`, `"Top bar"`, `"Left bar"` or `"Right bar"`. `SearchStyle` accepts `"Bar"` or `"Header"`.
 
+`UnlockMouse` defaults to `true`: while the window is shown, Viz keeps `MouseBehavior` on `Default` and the cursor visible, so first-person and shift-lock games don't trap the pointer. It restores whatever the game had when the window closes. Set `UnlockMouse = false`, or call `Window:SetMouseUnlock(false)`, if the UI is meant to stay open while you keep aiming.
+
 <details>
 <summary><b>Window methods</b></summary>
 

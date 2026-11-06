@@ -334,6 +334,7 @@ function Library:CreateWindow(config)
     assert(type(config) == "table", "CreateWindow expects an options table")
     assert(config.Title == nil or type(config.Title) == "string", "Title expects a string")
     assert(config.CanvasGroups == nil or type(config.CanvasGroups) == "boolean", "CanvasGroups expects a boolean")
+    assert(config.UnlockMouse == nil or type(config.UnlockMouse) == "boolean", "UnlockMouse expects a boolean")
     assert(
         config.Layout == nil or layoutEdges[config.Layout],
         "Layout must be Bottom bar, Top bar, Left bar or Right bar"
@@ -660,6 +661,26 @@ function Library:CreateWindow(config)
     local uiShown = true
     local menuHeld = false
     local windowTransitioning = false
+    local mouseUnlock = config.UnlockMouse ~= false
+    local savedMouseBehavior, savedMouseIcon
+    local function restoreMouse()
+        if savedMouseBehavior == nil then return end
+        UserInputService.MouseBehavior = savedMouseBehavior
+        UserInputService.MouseIconEnabled = savedMouseIcon
+        savedMouseBehavior, savedMouseIcon = nil, nil
+    end
+    local function applyMouseUnlock()
+        if mouseUnlock and uiShown and not menuHeld then
+            if savedMouseBehavior == nil then
+                savedMouseBehavior = UserInputService.MouseBehavior
+                savedMouseIcon = UserInputService.MouseIconEnabled
+            end
+            UserInputService.MouseBehavior = Enum.MouseBehavior.Default
+            UserInputService.MouseIconEnabled = true
+        else
+            restoreMouse()
+        end
+    end
     local windowMotionScale = Instance.new("UIScale")
     windowMotionScale.Name = "WindowMotionScale"
     windowMotionScale.Scale = 1
@@ -818,6 +839,15 @@ function Library:CreateWindow(config)
         return connection
     end
     track(RunService.RenderStepped:Connect(stepGlows))
+    track(RunService.RenderStepped:Connect(function()
+        if savedMouseBehavior == nil then return end
+        if UserInputService.MouseBehavior ~= Enum.MouseBehavior.Default then
+            UserInputService.MouseBehavior = Enum.MouseBehavior.Default
+        end
+        if not UserInputService.MouseIconEnabled then
+            UserInputService.MouseIconEnabled = true
+        end
+    end))
     local dockGlowLayer, dockGlowFactor
     local dragStarts = setmetatable({}, { __mode = "k" })
     local function approachPixel(current, target, alpha)
@@ -1630,6 +1660,7 @@ function Library:CreateWindow(config)
         if uiShown == visible then return end
         uiShown = visible
         screen:SetAttribute("Shown", visible)
+        applyMouseUnlock()
         cancelKeyCapture()
         closeDropdown(true)
         finishSlider()
@@ -1758,6 +1789,7 @@ function Library:CreateWindow(config)
     local function beginUIDestroy()
         if not uiAlive then return end
         uiAlive = false
+        restoreMouse()
         capturingKeybind = nil
         releaseHolds(false, true)
         keybindControls = {}
@@ -5991,6 +6023,7 @@ function Library:CreateWindow(config)
         finishUIVisibility = function()
             if windowTransitioning then settle() end
             root.Visible = uiShown and not menuHeld
+            applyMouseUnlock()
             resize()
         end
         animateUIVisibility = function(visible)
@@ -6032,6 +6065,7 @@ function Library:CreateWindow(config)
             cancelKeyCapture()
         end
         root.Visible = uiShown and not menuHeld
+        applyMouseUnlock()
         renderDock()
     end
     track(GuiService.MenuOpened:Connect(function()
@@ -6674,6 +6708,11 @@ function Library:CreateWindow(config)
     end
     function window:GetSearchStyle() return searchStyle end
     function window:SetAutoHide(value) applyAutoHide(value == true) end
+    function window:SetMouseUnlock(value)
+        mouseUnlock = value ~= false
+        applyMouseUnlock()
+    end
+    function window:GetMouseUnlock() return mouseUnlock end
     function window:SetTitle(text) title.Text = tostring(text) end
     function window:Notify(options) return notify(options) end
     function window:SetNotificationPosition(position)
