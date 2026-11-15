@@ -68,21 +68,6 @@ LeftGroupbox:AddRangeSlider("MyRange", {
     Default = { 20, 80 },
 })
 
--- Rows stack in call order. Order pins one row: "Top", "Bottom", or a number
--- where lower floats up. The rest keep their call order.
-LeftGroupbox:AddSlider("PinnedSlider", {
-    Text = "Pinned to top",
-    Min = 0,
-    Max = 10,
-    Default = 5,
-    Order = "Top",
-})
-
--- Or sort the whole group by kind, without touching the order you created them in.
--- Sliders first, then textboxes, then toggles and checkboxes.
--- LeftGroupbox:SetSortMode("SlidersFirst")
--- LeftGroupbox:SetSortMode("Default")
-
 LeftGroupbox:AddInput("MyInput", {
     Text = "Textbox",
     Placeholder = "Type here",
