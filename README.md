@@ -227,6 +227,20 @@ Dep:SetupDependencies({ { Toggles.MyToggle, true } })
 
 For a multi dropdown, the expected key must be selected.
 
+Rows stack in the order you create them. Two ways to override that. Per control, `Order` pins a single row — `"Top"`, `"Bottom"`, or a number where lower floats up:
+
+```lua
+Group:AddSlider("FOV", { Text = "FOV", Min = 40, Max = 120, Default = 70, Order = "Top" })
+```
+
+Per group, `SetSortMode` re-stacks every row by kind, so sliders sit above inputs and toggles without touching call order:
+
+```lua
+Group:SetSortMode("SlidersFirst") -- or "Default"
+```
+
+An explicit `Order` still beats the sort mode.
+
 `Group:GetControl(control)` returns the API for a control, including `SetText`, `SetDisabled`, `SetVisible`, `OnChanged` and `Destroy`.
 
 To put buttons on the same row:

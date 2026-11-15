@@ -2502,7 +2502,14 @@ function Library:CreateWindow(config)
         config = config or {}
         local side = config.Side or "Left"
         assert(side == "Left" or side == "Right", "Group Side must be Left or Right")
-        local group = { Name = config.Name or "Group", Elements = {}, RowSections = {}, RowControls = {} }
+        local group = {
+            Name = config.Name or "Group",
+            Elements = {},
+            RowSections = {},
+            RowControls = {},
+            RowPriority = {},
+            RowKind = {},
+        }
         group.SearchText = group.Name
         local frame = rounded("Frame", group.Name, tab.Columns[side], 0, 0, 0, 0, "Card", 12)
         frame.Size = UDim2.new(1, config.FrameInset or -6, 0, 0)
@@ -2884,6 +2891,31 @@ function Library:CreateWindow(config)
             if insertionSection then insertionSection.SearchText = insertionSection.SearchText .. " " .. name end
             filterCards()
             return object
+        end
+        -- Rows stack in call order. Order = "Top" / "Bottom" / number on any control
+        -- pins it, and SetSortMode("SlidersFirst") lifts sliders above the rest
+        -- without touching call order.
+        local function rowRank(element)
+            local map = group.SortKinds
+            if not map then return 0 end
+            return map[group.RowKind[element] or ""] or 99
+        end
+        local function restack()
+            local ranked = {}
+            for index, element in ipairs(group.Elements) do
+                ranked[#ranked + 1] = {
+                    Element = element,
+                    Priority = group.RowPriority[element] or 0,
+                    Rank = rowRank(element),
+                    Index = index,
+                }
+            end
+            table.sort(ranked, function(a, b)
+                if a.Priority ~= b.Priority then return a.Priority < b.Priority end
+                if a.Rank ~= b.Rank then return a.Rank < b.Rank end
+                return a.Index < b.Index
+            end)
+            for order, entry in ipairs(ranked) do entry.Element.LayoutOrder = order end
         end
         local function persist(options, kind, owner, read, write, validate, changed)
             if options.NoSave then return end
@@ -4673,6 +4705,7 @@ function Library:CreateWindow(config)
                     if index then table.remove(group.Elements, index) end
                     group.RowSections[container] = nil
                     group.RowControls[container] = nil
+                    group.RowPriority[container], group.RowKind[container] = nil, nil
                     task.defer(function() if uiAlive and frame.Parent then filterCards() end end)
                 end)
                 return control
@@ -4814,6 +4847,7 @@ function Library:CreateWindow(config)
                         element:Destroy()
                         if group.Elements[index] == element then table.remove(group.Elements, index) end
                         group.RowSections[element], group.RowControls[element] = nil, nil
+                        group.RowPriority[element], group.RowKind[element] = nil, nil
                     end
                     error(control, 2)
                 end
@@ -4828,12 +4862,42 @@ function Library:CreateWindow(config)
                         end)
                     end
                 end
+                local element = group.Elements[#group.Elements]
+                if element then
+                    group.RowKind[element] = kind
+                    local order = config.Order
+                    if order == "Top" then
+                        group.RowPriority[element] = -1e9
+                    elseif order == "Bottom" then
+                        group.RowPriority[element] = 1e9
+                    elseif type(order) == "number" and order == order then
+                        group.RowPriority[element] = order
+                    end
+                    if group.RowPriority[element] or group.SortKinds then restack() end
+                end
                 return control
             end
         end
         group.AddInput = group.AddTextbox
         group.AddCheckboxes = group.AddCheckbox
         group.AddDoubleSlider = group.AddRangeSlider
+
+        -- group:SetSortMode("SlidersFirst") lifts every slider above the inputs and
+        -- toggles; "Default" restores call order. Per-control Order still wins.
+        function group:SetSortMode(mode)
+            assert(mode == nil or mode == "Default" or mode == "SlidersFirst",
+                'SetSortMode expects "Default" or "SlidersFirst"')
+            group.SortKinds = (mode == "SlidersFirst") and {
+                Slider = 1,
+                RangeSlider = 1,
+                Textbox = 2,
+                Input = 2,
+                Toggle = 3,
+                Checkbox = 3,
+            } or nil
+            restack()
+            return self
+        end
 
         local dependencyBoxes = {}
         local function updateDependencyRows()
